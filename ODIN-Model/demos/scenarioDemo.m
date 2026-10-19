@@ -6,6 +6,9 @@ function v = scenarioDemo(cases, frame, nHours, basemap)
 % basemap: globe imagery, 'satellite' when omitted; 'darkwater' needs no internet
 % v: satelliteScenarioViewer object
 
+addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+odinPath;
+
 persistent keep % keep: scenario of the latest call, held so its viewer outlives this function
 
 if nargin < 1 || isempty(cases)

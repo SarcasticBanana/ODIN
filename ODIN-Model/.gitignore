@@ -1,0 +1,9 @@
+# MATLAB autosave files
+*.asv
+
+# Windows folder settings
+desktop.ini
+
+# Large validation outputs, kept local
+validation/results/*.mat
+validation/results/SW-All.csv

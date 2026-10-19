@@ -1,0 +1,19 @@
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00 done in 1 s
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30 done in 1 s
+C: 800 x 800 km, i = 98.566 deg, LTAN 18:00 done in 0 s
+D: 950 x 950 km, i = 99.216 deg, LTAN 18:00 done in 0 s
+E: 800 x 800 km, i = 90.000 deg, LTAN 18:00 done in 0 s
+F: 650 x 950 km, i = 98.557 deg, LTAN 18:00 done in 0 s
+
+mean equator and equinox of 2026-09-15 00:00 UTC to GCRF
+total rotation angle 0.3730 deg (1343.0 arcsec)
+equinox of epoch in GCRF: right ascension -0.3421 deg, declination -0.1487 deg
+pole of epoch from the GCRF pole: 0.1487 deg
+
+case  |dr| min  mean   max [km]   along max [km]   [s]   cross max [km]   ground shift min  mean   max [km]   60 s eph at 1 s [m]   at samples [m]
+A          7.4  30.0   45.8              7.8  1.03             45.1                6.7  27.2   41.5              1024.321         2.95e-09
+B         21.7  34.9   45.8             21.9  2.90             40.3               19.6  31.6   41.5              1039.300         2.83e-09
+C          8.0  30.8   46.7              8.4  1.13             46.0                7.1  27.3   41.5              1014.505         2.84e-09
+D          8.7  31.6   47.7              9.1  1.23             46.9                7.5  27.4   41.5               973.056         2.95e-09
+E          2.0  29.7   46.7              2.0  0.27             46.7                1.7  26.3   41.5              1032.154         2.84e-09
+F          7.9  30.8   47.6              8.5  1.17             46.9                7.1  27.3   41.5               973.171         2.83e-09

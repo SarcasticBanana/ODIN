@@ -2,6 +2,9 @@
 
 clear; close all; clc;
 
+addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+odinPath;
+
 %% Orbit calculation
 cfg = config(); % cfg: parameter struct
 out = propagate(cfg, 10); % out: state history struct from propagate.m

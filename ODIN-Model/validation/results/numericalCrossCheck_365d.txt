@@ -1,0 +1,106 @@
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00 done in 0 s
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00 J2 model in 54 s
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30 done in 0 s
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30 J2 model in 58 s
+C: 800 x 800 km, i = 98.566 deg, LTAN 18:00 done in 0 s
+C: 800 x 800 km, i = 98.566 deg, LTAN 18:00 J2 model in 60 s
+D: 950 x 950 km, i = 99.216 deg, LTAN 18:00 done in 0 s
+D: 950 x 950 km, i = 99.216 deg, LTAN 18:00 J2 model in 51 s
+E: 800 x 800 km, i = 90.000 deg, LTAN 18:00 done in 0 s
+E: 800 x 800 km, i = 90.000 deg, LTAN 18:00 J2 model in 54 s
+F: 650 x 950 km, i = 98.557 deg, LTAN 18:00 done in 0 s
+F: 650 x 950 km, i = 98.557 deg, LTAN 18:00 J2 model in 52 s
+
+case  full Sun [%]  penumbra [%]  umbra [%]  longest shadow [min]  longest umbra [min]  first shadow  last shadow
+A            95.76         0.347       3.89                 20.25                19.42   06 May 2027  07 Aug 2027
+B            64.72         0.324      34.96                 35.08                34.77   15 Sep 2026  14 Sep 2027
+C            97.02         0.328       2.65                 17.43                16.45   13 May 2027  31 Jul 2027
+D            98.00         0.311       1.69                 14.69                13.51   20 May 2027  24 Jul 2027
+E            79.41         0.376      20.21                 35.30                35.00   14 Oct 2026  20 Aug 2027
+F            96.77         0.257       2.98                 19.93                19.17   14 May 2027  27 Jul 2027
+
+case  full Sun [%]  penumbra [%]  umbra [%]  longest shadow [min]  longest umbra [min]  first shadow  last shadow
+A            95.82         0.352       3.83                 19.98                19.13   06 May 2027  07 Aug 2027
+B            64.77         0.326      34.90                 35.06                34.76   15 Sep 2026  14 Sep 2027
+C            97.08         0.330       2.59                 17.26                16.27   13 May 2027  30 Jul 2027
+D            98.02         0.307       1.67                 14.70                13.52   20 May 2027  23 Jul 2027
+E            79.37         0.376      20.25                 35.33                35.02   14 Oct 2026  20 Aug 2027
+F            96.81         0.258       2.93                 19.82                19.05   14 May 2027  27 Jul 2027
+
+case  full Sun [%]  penumbra [%]  umbra [%]  longest shadow [min]  longest umbra [min]  first shadow  last shadow
+A            95.78         0.353       3.87                 20.07                19.22   06 May 2027  07 Aug 2027
+B            64.73         0.325      34.95                 35.07                34.76   15 Sep 2026  14 Sep 2027
+C            97.08         0.330       2.59                 17.28                16.28   13 May 2027  30 Jul 2027
+D            98.02         0.308       1.67                 14.70                13.52   20 May 2027  23 Jul 2027
+E            79.37         0.376      20.25                 35.33                35.03   14 Oct 2026  20 Aug 2027
+F            96.81         0.258       2.94                 19.83                19.06   14 May 2027  27 Jul 2027
+
+case  full Sun [%]  penumbra [%]  umbra [%]  longest shadow [min]  longest umbra [min]  first shadow  last shadow
+A            95.81         0.352       3.84                 20.00                19.15   06 May 2027  07 Aug 2027
+B            64.76         0.326      34.92                 35.06                34.76   15 Sep 2026  14 Sep 2027
+C            97.08         0.330       2.59                 17.26                16.27   13 May 2027  30 Jul 2027
+D            98.02         0.308       1.67                 14.70                13.52   20 May 2027  23 Jul 2027
+E            79.37         0.376      20.25                 35.33                35.02   14 Oct 2026  20 Aug 2027
+F            96.81         0.258       2.93                 19.82                19.05   14 May 2027  27 Jul 2027
+
+case  full Sun [%]  penumbra [%]  umbra [%]  longest shadow [min]  longest umbra [min]  first shadow  last shadow
+A            95.80         0.353       3.85                 20.02                19.17   06 May 2027  07 Aug 2027
+B            64.75         0.325      34.92                 35.07                34.76   15 Sep 2026  15 Sep 2027
+C            97.08         0.330       2.59                 17.27                16.27   13 May 2027  30 Jul 2027
+D            98.02         0.307       1.67                 14.70                13.52   20 May 2027  23 Jul 2027
+E            79.37         0.376      20.25                 35.33                35.02   14 Oct 2026  20 Aug 2027
+F            96.81         0.258       2.93                 19.82                19.05   14 May 2027  27 Jul 2027
+
+case  full Sun [%]  penumbra [%]  umbra [%]  longest shadow [min]  longest umbra [min]  first shadow  last shadow
+A            95.82         0.353       3.83                 19.99                19.14   06 May 2027  07 Aug 2027
+B            64.77         0.326      34.91                 35.06                34.76   15 Sep 2026  15 Sep 2027
+C            97.08         0.330       2.59                 17.26                16.27   13 May 2027  30 Jul 2027
+D            98.02         0.308       1.67                 14.70                13.52   20 May 2027  23 Jul 2027
+E            79.37         0.376      20.25                 35.33                35.02   14 Oct 2026  20 Aug 2027
+F            96.81         0.258       2.93                 19.82                19.05   14 May 2027  27 Jul 2027
+
+toolbox wall time per configuration, 6 cases together
+  EGM2008, no drag             B   1     9750 s
+  EGM2008 + drag, F10.7 150    B  30    10813 s
+  EGM2008 + drag, F10.7 150    B 150    10826 s
+  EGM2008 + drag, CelesTrak    B  30    11841 s
+  EGM2008 + drag, CelesTrak    B 150    11761 s
+
+toolbox minus J2 model over 365 days, EGM2008 120 x 120, RelTol 1e-08, B = m/(Cd A) assumed [kg/m^2]
+case  model full Sun [%]  model longest [min]  model alt [km]   configuration               B    d full Sun [pp]  d longest [min]  d alt end [km]  decay [km]  lowest [km]
+A                  95.76                20.25          645.21   J2 model                                                                                            640.44
+A                                                               EGM2008, no drag              0            0.054           -0.266            0.06        0.07       626.03
+A                                                               EGM2008 + drag, F10.7 150    30            0.014           -0.181           -4.80       -4.79       622.35
+A                                                               EGM2008 + drag, F10.7 150   150            0.046           -0.249           -0.95       -0.94       625.35
+A                                                               EGM2008 + drag, CelesTrak    30            0.036           -0.227           -1.94       -1.93       624.42
+A                                                               EGM2008 + drag, CelesTrak   150            0.050           -0.258           -0.30       -0.29       625.75
+B                  64.72                35.08          645.21   J2 model                                                                                            640.44
+B                                                               EGM2008, no drag              0            0.055           -0.012           -0.03        0.11       625.91
+B                                                               EGM2008 + drag, F10.7 150    30            0.011           -0.009           -4.50       -4.37       622.52
+B                                                               EGM2008 + drag, F10.7 150   150            0.044           -0.012           -0.94       -0.80       625.26
+B                                                               EGM2008 + drag, CelesTrak    30            0.036           -0.011           -1.87       -1.73       624.40
+B                                                               EGM2008 + drag, CelesTrak   150            0.051           -0.012           -0.37       -0.23       625.64
+C                  97.02                17.43          795.30   J2 model                                                                                            790.61
+C                                                               EGM2008, no drag              0            0.062           -0.165            0.05        0.04       776.52
+C                                                               EGM2008 + drag, F10.7 150    30            0.056           -0.150           -0.87       -0.88       775.83
+C                                                               EGM2008 + drag, F10.7 150   150            0.061           -0.162           -0.13       -0.14       776.41
+C                                                               EGM2008 + drag, CelesTrak    30            0.059           -0.158           -0.38       -0.39       776.22
+C                                                               EGM2008 + drag, CelesTrak   150            0.061           -0.164           -0.04       -0.05       776.49
+D                  98.00                14.69          945.38   J2 model                                                                                            940.77
+D                                                               EGM2008, no drag              0            0.025            0.008            0.02        0.01       927.00
+D                                                               EGM2008 + drag, F10.7 150    30            0.024            0.013           -0.24       -0.25       926.76
+D                                                               EGM2008 + drag, F10.7 150   150            0.025            0.009           -0.03       -0.04       926.97
+D                                                               EGM2008 + drag, CelesTrak    30            0.024            0.011           -0.13       -0.13       926.88
+D                                                               EGM2008 + drag, CelesTrak   150            0.025            0.008           -0.01       -0.02       926.97
+E                  79.41                35.30          795.40   J2 model                                                                                            790.81
+E                                                               EGM2008, no drag              0           -0.039            0.023            0.01       -0.00       774.71
+E                                                               EGM2008 + drag, F10.7 150    30           -0.044            0.023           -0.77       -0.78       774.06
+E                                                               EGM2008 + drag, F10.7 150   150           -0.040            0.023           -0.15       -0.16       774.63
+E                                                               EGM2008 + drag, CelesTrak    30           -0.042            0.023           -0.35       -0.35       774.44
+E                                                               EGM2008 + drag, CelesTrak   150           -0.040            0.023           -0.07       -0.08       774.69
+F                  96.77                19.93          796.78   J2 model                                                                                            647.01
+F                                                               EGM2008, no drag              0            0.044           -0.110            0.02       -0.68       638.29
+F                                                               EGM2008 + drag, F10.7 150    30            0.038           -0.099           -1.75       -2.45       637.72
+F                                                               EGM2008 + drag, F10.7 150   150            0.043           -0.108            0.09       -0.61       638.22
+F                                                               EGM2008 + drag, CelesTrak    30            0.041           -0.105            0.04       -0.66       638.04
+F                                                               EGM2008 + drag, CelesTrak   150            0.043           -0.109            0.04       -0.67       638.27

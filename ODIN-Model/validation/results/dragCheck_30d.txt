@@ -1,0 +1,37 @@
+1. exospheric temperature against J77 Table 5
+   F10.7 [sfu]   Table 5 [K]   dragTable [K]
+            70         720.9           720.9
+           100         860.5           860.5
+           150        1057.2          1057.2
+           200        1227.4          1227.4
+           250        1380.7          1380.7
+           300        1522.2          1522.2
+   largest difference 0.047 K, limit 0.05 K: PASS
+
+2. j77sri.m against t1000.out, 126 rows: largest differences 0.0049 K, 5.0e-05 in log10 n, 0.0005 g/mol
+   limits 0.006 K, 6e-5, 0.0006 g/mol, just above half the last printed digit: PASS
+
+3. J77 at F10.7 = 150 against the NRLMSISE-00 global mean at F10.7 = 150, Ap = 4 on 15 Sep 2026
+   height [km]   J77 [kg/m^3]   NRLMSISE-00 [kg/m^3]   ratio
+           400      3.873e-12              3.977e-12    0.97
+           500      7.609e-13              7.807e-13    0.97
+           550      3.552e-13              3.660e-13    0.97
+           600      1.711e-13              1.776e-13    0.96
+           650      8.535e-14              8.946e-14    0.95
+           700      4.448e-14              4.709e-14    0.94
+           800      1.443e-14              1.540e-14    0.94
+           900      6.258e-15              6.546e-15    0.96
+           950      4.565e-15              4.688e-15    0.97
+          1000      3.507e-15              3.531e-15    0.99
+   all ratios within 15%, the scatter of Jacchia models against drag data: PASS
+
+4. drag acceleration from eom.m against SI units at 655.2 km: relative difference 7.2e-09, limit 1e-6: PASS
+
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00 done in 0 s
+5. drag-free case A against the earlier J2 model run: largest difference 0.0e+00 km, limit 1e-6 km: PASS
+6. case A drag decay over 30 days, F10.7 = 150, m/(Cd A) = 30 kg/m^2
+   model with J77 drag (ode45)                -0.369 km   run 34 s with drag, 6 s without
+   orbit averaged rate, SI units              -0.370 km   model / rate = 0.997, limit 2%: PASS
+7. high-fidelity, NRLMSISE-00 and EGM2008     -0.406 km   model / high-fidelity = 0.908, comparison only
+
+checks passed: 6 of 6

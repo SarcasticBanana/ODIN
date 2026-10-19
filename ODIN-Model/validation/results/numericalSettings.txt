@@ -1,0 +1,23 @@
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00 done in 0 s
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30 done in 0 s
+C: 800 x 800 km, i = 98.566 deg, LTAN 18:00 done in 0 s
+D: 950 x 950 km, i = 99.216 deg, LTAN 18:00 done in 0 s
+E: 800 x 800 km, i = 90.000 deg, LTAN 18:00 done in 0 s
+F: 650 x 950 km, i = 98.557 deg, LTAN 18:00 done in 0 s
+
+wall time for 1 day, 6 cases propagated together
+  J2 only, RelTol 1e-8                  16.0 s,    1.6 h for a year
+  EGM2008 120 x 120, RelTol 1e-10      124.1 s,   12.6 h for a year
+  EGM2008 120 x 120, RelTol 1e-8        46.0 s,    4.7 h for a year
+  EGM2008 36 x 36, RelTol 1e-8          21.4 s,    2.2 h for a year
+  EGM2008 20 x 20, RelTol 1e-8          17.7 s,    1.8 h for a year
+  EGM2008 120 x 120 + drag, 1e-8        49.0 s,    5.0 h for a year
+
+largest position difference after 1 day [m]
+case   toolbox J2 - model J2   120 at 1e-8 - 1e-10   36 - 120 at 1e-8   20 - 120 at 1e-8   drag - no drag
+A                     256.63                 12.76               7.67              41.48           871.27
+B                     305.00                 12.67              21.03              75.50           786.91
+C                     235.03                 10.56               5.94              38.98           150.33
+D                     217.02                  8.75               3.03              10.02            46.60
+E                     208.65                 10.57               6.22              55.11           146.36
+F                     288.45                 10.74               6.75              34.78           422.42

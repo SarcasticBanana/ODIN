@@ -1,0 +1,22 @@
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00 done in 0 s
+A: 650 x 650 km, i = 97.950 deg, LTAN 18:00: 1346 contacts
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30 done in 0 s
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30: 1335 contacts
+C: 800 x 800 km, i = 98.566 deg, LTAN 18:00 done in 0 s
+C: 800 x 800 km, i = 98.566 deg, LTAN 18:00: 1488 contacts
+D: 950 x 950 km, i = 99.216 deg, LTAN 18:00 done in 0 s
+D: 950 x 950 km, i = 99.216 deg, LTAN 18:00: 1625 contacts
+E: 800 x 800 km, i = 90.000 deg, LTAN 18:00 done in 0 s
+E: 800 x 800 km, i = 90.000 deg, LTAN 18:00: 1447 contacts
+F: 650 x 950 km, i = 98.557 deg, LTAN 18:00 done in 0 s
+F: 650 x 950 km, i = 98.557 deg, LTAN 18:00: 1487 contacts
+
+Boulder campus placeholder, 40.007 N -105.266 E, 10 deg mask, 437 MHz, 365 days
+placeholder radio: 0 dBW, 0 dBi, 1 dB line, G/T -13 dB/K, 3 dB polarisation, 1 dB atmosphere, 9600 bit/s, Eb/N0 10 dB
+case  contacts/day  mean [min]  longest [min]  min/day  margin at mask [dB]  best margin [dB]  MB/day   in shadow: contacts  min/day  longest [min]  longest in umbra [min]
+A             3.69        7.12           9.02     26.2                  9.2              19.2    1.89                    0     0.00           0.00                    0.00
+B             3.66        7.16           9.03     26.2                  9.2              19.2    1.89                  665    11.51           9.03                    9.03
+C             4.08        8.38          10.57     34.1                  7.9              17.4    2.46                    0     0.00           0.00                    0.00
+D             4.45        9.49          12.05     42.3                  6.9              16.0    3.04                    0     0.00           0.00                    0.00
+E             3.96        8.43          10.67     33.4                  7.9              17.4    2.41                  433     7.06          10.67                   10.67
+F             4.07        8.41          12.03     34.2                  7.0              19.1    2.47                    0     0.00           0.00                    0.00

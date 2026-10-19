@@ -14,6 +14,11 @@ T = 2*pi*sqrt(a^3/cfg.mu); % T: orbital period [s]
 % r0: initial position vector in ECI [km]
 % v0: initial velocity vector in ECI [km/s]
 
+if cfg.use.drag
+    cfg.drag.logRho = dragTable(cfg);
+    % cfg.drag.logRho: pchip interpolant of the natural log of J77 mass density [kg/m^3] against height above the ellipsoid [km]
+end
+
 tspan = 0 : cfg.ode.dtOut : nOrbits*T;
 
 opts = odeset('RelTol', cfg.ode.relTol, 'AbsTol', cfg.ode.absTol);

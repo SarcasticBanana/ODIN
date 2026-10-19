@@ -1,0 +1,33 @@
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30 done in 1 s
+
+B: 650 x 650 km, i = 97.950 deg, LTAN 10:30, 29 complete shadows
+eclipseTimes from the 60 s and 1 s grids, largest entry and exit difference: 6.37e-05 s, 6.36e-05 s
+shadow duration 34.47 to 34.49 min
+
+60 s sample time, corrected: 29 of 29 shadows matched
+  start  mean  +28.48 s  min   +1.37  max  +58.19
+  end    mean  -27.21 s  min  -57.73  max   -0.71
+  dur    mean  -55.69 s  min  -89.57  max  -27.95
+  largest offset of a toolbox start from the sample grid 0.00e+00 s, of a duration from a whole number of samples 0.00e+00 s
+
+60 s sample time, uncorrected: 29 of 29 shadows matched
+  start  mean  +30.55 s  min   +3.34  max  +61.37
+  end    mean  -25.14 s  min  -54.73  max   +2.27
+  dur    mean  -55.69 s  min  -89.57  max  -27.95
+  largest offset of a toolbox start from the sample grid 0.00e+00 s, of a duration from a whole number of samples 0.00e+00 s
+
+ 1 s sample time, corrected: 29 of 29 shadows matched
+  start  mean   +0.48 s  min   -0.06  max   +0.92
+  end    mean   -0.73 s  min   -0.74  max   -0.71
+  dur    mean   -1.20 s  min   -1.63  max   -0.67
+  largest offset of a toolbox start from the sample grid 0.00e+00 s, of a duration from a whole number of samples 0.00e+00 s
+  toolbox lag from the penumbra fraction: entry mean -0.071 s (sd 0.004), exit mean -0.133 s (sd 0.009)
+  largest fraction difference 0.0176
+
+ 1 s sample time, uncorrected: 29 of 29 shadows matched
+  start  mean   +2.72 s  min   +2.28  max   +3.25
+  end    mean   +3.27 s  min   +3.26  max   +3.29
+  dur    mean   +0.55 s  min   +0.03  max   +0.99
+  largest offset of a toolbox start from the sample grid 0.00e+00 s, of a duration from a whole number of samples 0.00e+00 s
+  toolbox lag from the penumbra fraction: entry mean +2.098 s (sd 0.741), exit mean +3.543 s (sd 2.142)
+  largest fraction difference 0.5525
