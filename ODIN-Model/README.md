@@ -31,7 +31,7 @@ Needs MATLAB R2019a or newer. Demos and checks need the Aerospace Toolbox.
 
 - `assumptions.xlsx`: all inputs (Inputs sheet), drag assumptions, check results, sources
 - `odinPath.m`: path setup
-- `model/`: the model itself. config, propagate, eom (gravity, J2, drag), oe2rv, sunVector, shadow, shadowGeometry, eclipseTimes, solarFlux, dragTable, gcrfRotation, odinToScenario
+- `model/`: the model itself (config, propagate, eom (gravity, J2, drag), oe2rv, sunVector, shadow, shadowGeometry, eclipseTimes, solarFlux, dragTable, gcrfRotation, odinToScenario)
 - `demos/`: main_demo, scenarioDemo (3D viewer), runSatViewer (one day with a ground station), plotScale
 - `power/`: arrayPower, array sizing and incidence sweeps
 - `studies/orbitTrade/`: pre-DR1 orbit trade (cases A to F), still used as test orbits by the checks
