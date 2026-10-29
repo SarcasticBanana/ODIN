@@ -1,91 +1,84 @@
-function [rate_per_s,details] = debrisDetectionRate(elements,cfg,sunPosition_km,Detection)
-% DEBRISDETECTIONRATE Instantaneous qualified debris passages per second.
-% Regenerated delivery: 2026-10-28. Function name and calling interface unchanged.
+function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,sunPosition_km,Detection)
+% DEBRISDETECTIONRATE Qualified passage-rate history for one spacecraft.
+% Updated 2026-10-29: direct CDH Cartesian time histories, one-file interface.
 %
-%   rate_per_s = debrisDetectionRate(elements,cfg,sunPosition_km)
-%   [rate_per_s,details] = debrisDetectionRate(elements,cfg,sunPosition_km,Detection)
+% [rates,details] = debrisDetectionRate(t,r,v,h,cfg,rSun,Detection)
+% Detection is optional; grouped defaults follow below.
 %
-% INPUTS
-%   elements: ONE instantaneous set of osculating spacecraft elements:
-%       [a_km, eccentricity, inclination_deg, RAAN_deg, argPerigee_deg, trueAnomaly_deg]
-%     Or a scalar struct with fields a, ecc, inc, raan, argp, nu in those units.
-%     Use the current orbital model output, NOT cfg.raan0/argp0/nu0 on every
-%     call. a is semimajor axis, not altitude. Only 0 <= eccentricity < 1 is
-%     supported. No circular spacecraft assumption or SSO inclination reset.
+% INPUTS (all rows describe the SAME times and fixed inertial frame)
+%   time_s         N-vector of finite, strictly increasing sample times [s].
+%                  One sample is also supported. No resampling is performed.
+%   r_km           N-by-3 Earth-centered spacecraft POSITION [km].
+%   v_km_s         N-by-3 inertial spacecraft VELOCITY [km/s], not ECEF or
+%                  velocity relative to the rotating atmosphere.
+%   h_km           N-vector CDH altitude [km], NOT angular momentum or radius.
+%                  Preserved for comparison with |r|-cfg.Re. Geometry uses r.
+%                  Ellipsoidal CDH drag height can differ from spherical
+%                  MASTER altitude; differences >1 metre generate one warning.
+%   cfg            CDH constants: mu [km^3/s^2], Re [km], Rsun [km], epoch.
+%                  epoch identifies the caller's frame; it does not generate
+%                  Sun positions or propagate states at the supplied times.
+%   sunPosition_km N-by-3 simultaneous Earth-to-Sun POSITION [km], same frame
+%                  as r and v. No unit directions, implicit Sun broadcasting,
+%                  or internal Sun ephemeris. Supply the CDH Sun history.
+%   Detection      Optional scalar configuration; same settings as before.
 %
-%   cfg: CDH configuration. Required fields are:
-%       mu    : gravitational parameter [km^3/s^2]
-%       Re    : equatorial Earth radius [km]
-%       Rsun  : solar radius [km]
-%       epoch : reference-frame epoch (CDH value, e.g. [2026 9 15 0 0 0])
-%     cfg.epoch identifies the fixed mean-equator/equinox-of-epoch frame;
-%     it is NOT interpreted as the observation time for every call.
-%
-%   sunPosition_km: Earth-center-to-Sun POSITION vector [km], 1x3 or 3x1,
-%     at the SAME observation instant and in the SAME frame as elements.
-%     Supply this from the CDH Sun model. Do not pass a unit direction, an
-%     Earth-fixed vector, or a J2000 vector without the appropriate transform.
-%     This function deliberately has no independent Sun ephemeris fallback.
-%
-%   Detection: optional scalar struct of overrides. Unspecified fields use
-%     the grouped defaults in Section 1 below. Example:
-%       Detection.Debris.MASTERFolder = 'C:\project\MASTER_Data';
-%       Detection.Sensor.CSVFile = 'C:\project\Sensor_Residence_Time_Trade.csv';
-%       Detection.Pointing.CustomRTN = [sind(66) 0 cosd(66)];
-%       Detection.Pointing.ChooseAntiSunNormal = true;
-%     Update CustomRTN at each call to apply an external pointing law, and
-%     set ChooseAntiSunNormal=false if the vector already has its intended sign.
+% Supply N-by-3 arrays (transpose CDH 3-by-N outputs explicitly). For a single
+% time, Cartesian vectors can be rows or columns. Scalars r and v containing
+% only radius and speed are insufficient to establish pointing and exclusion.
+% This interface replaces the earlier orbital-elements calling signature.
 %
 % OUTPUTS
-%   rate_per_s: 1 x number-of-size-bins vector [qualified object passages/s],
-%     for ONE satellite at the supplied state. Default columns are:
-%       [1-1.5 cm, 1.5-2.5 cm, 2.5-3 cm, 3-5 cm].
-%     These are expected rates, not random draws, unique-object counts, or
-%     event-camera pixel events. The CDH caller integrates rate over its time
-%     grid and applies its own observing/communications schedule, if needed.
+%   rate_per_s     N-by-B, expected qualified OBJECT PASSAGES per second.
+%                  Rows align exactly with time_s; B is the number of bins.
+%                  Default bins: [1,1.5], [1.5,2.5], [2.5,3], [3,5] cm.
+%   details        Time histories of state, pointing, exclusion, qualification
+%                  diagnostics and total/science/outside-science rates; shared
+%                  MASTER/sensor metadata stored once. SizeBins_cm defines
+%                  output columns. GeometryBuildCount reports cache misses.
 %
-%   details: bin definitions, per-bin rates, science/outside/total rates,
-%     input-density summary, spacecraft state, boresight, exclusion status,
-%     and sensor assumptions. Use details.Status to distinguish Sun-blocked
-%     geometry from no qualified passages. Units are included in field names.
+% EXAMPLE (variables supplied by the CDH orbit and Sun models)
+%   Detection.Debris.MASTERFolder = fullfile(pwd,'MASTER_Data');
+%   Detection.Sensor.CSVFile = fullfile(pwd,'Sensor_Residence_Time_Trade.csv');
+%   [rate_per_s,info] = debrisDetectionRate(t,r,v,h,cfg,rSun,Detection);
+%   % Precompute before the CDH ODE. Per-bin lookup, within the sampled span:
+%   % lambda = interp1(t(:),rate_per_s,tQuery,'linear');
+%   % Do not interpolate blindly across exclusion/operating transitions:
+%   % resolve transition times and enforce the observing mask in the caller.
 %
+% PHYSICS AND CDH CONVENTIONS
+%   Retains MASTER altitude-diameter density, circular debris inclination/RAAN
+%   sampling, sensor residence-time CSV, pointing, Earth and Sun exclusion.
+%   Spacecraft motion is not assumed circular: full radial/transverse velocity
+%   comes from r,v. MASTER queries use spherical altitude, not CDH drag height.
+%   RTN is R=r/|r|, N=(r cross v)/|r cross v|, T=N cross R. Inclination comes
+%   from N relative to the fixed frame's equatorial plane.
+%   CustomRTN is fixed in that local frame across the input history, with the
+%   existing optional anti-Sun normal-sign choice. No new pointing schedule.
+%   Illumination remains in the CSV; fixed-phase limitations remain. No added
+%   spacecraft eclipse multiplier, velocity threshold, or brightness rescaling.
+%   Straight chords, locally fixed attitude/velocity and midpoint response/
+%   density remain approximations. No individual debris propagation.
 %
-% RETAINED DETECTION APPROXIMATIONS
-%   MASTER altitude-diameter density is uniform over each spherical shell.
-%   Circular debris orbits retain V2.3's inclination/relative-RAAN/node weights;
-%   the local velocity approximation is not a fitted phase-space distribution.
-%   Spacecraft radial AND transverse velocity are included for eccentricity.
-%   Crossings are straight lines with locally fixed velocity and attitude.
-%   Density, sensor residence threshold and optional phase use chord midpoints.
-%   Sensor/RTN slew during a crossing is not integrated; the caller's ODE output
-%   spacing does not remove that approximation. Refine this for slow crossings.
-%   MASTER is a fixed snapshot; density is not evolved with the orbit epoch.
-%   There is no additional MaxRelativeVel_kms cutoff or illumination multiplier.
+% PERFORMANCE / SCOPE
+%   MASTER and sensor files are loaded/checked once per batch (and cached
+%   between calls). Exact repeated LAST geometry is reused; distinct states
+%   still require chord integration. No approximate state rounding or physics
+%   change is introduced. A history interface alone does not guarantee speedup.
+%   No plots, trades, comms downtime, synthetic population, constellation,
+%   automatic saving, count integration or ODE calls. Caller owns these.
+%   After replacing files while preserving timestamps: clear debrisDetectionRate
+%   Use a configurable CDH sampling cadence and check rate/count convergence.
 %
-% IMPLEMENTATION
-%   File data are cached; file path/size/modification time and relevant options
-%   trigger a reload. Exact repeated geometry is cached for the last state only.
-%   After editing files without changing their timestamps, run:
-%       clear debrisDetectionRate
-%   Per-state geometry is numerical quadrature and may be expensive for long
-%   CDH histories. Check convergence when changing the numerical sample counts.
-%
-% Example inside the caller's output-time loop (variable names illustrative):
-%   oe = [a_km, ecc, inc_deg, raan_deg, argp_deg, nu_deg];
-%   [lambda,info] = debrisDetectionRate(oe,cfg,rSunModelFrame_km,Detection);
-%   % Store lambda as one row of your time history. Integrate in the caller.
-%
-% Derived from Constellation_Trade_DetectionV2_5; one file, local helpers below.
-
 %% 1. DETECTION INPUTS AND DEFAULTS
 
-    if nargin<4 || isempty(Detection), Detection=struct; end
+    if nargin<7 || isempty(Detection), Detection=struct; end
     modelFolder = fileparts(mfilename('fullpath'));
     Defaults.Shell.MinAltitude_km = 600;
     Defaults.Shell.MaxAltitude_km = 1000;
 
     Defaults.Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade.csv');
-    Defaults.Sensor.FOVShape = "Circular"; % "Circular" or "Square"
+    Defaults.Sensor.FOVShape = "Square"; % "Circular" or "Square"
     Defaults.Sensor.UseCSVFOV = true;
     Defaults.Sensor.FOV_deg = 1.4;         % FULL angle if CSV FOV is disabled
     Defaults.Sensor.ExpectedAlbedo = 0.20;% Metadata check, not brightness scaling
@@ -130,9 +123,18 @@ function [rate_per_s,details] = debrisDetectionRate(elements,cfg,sunPosition_km,
     Exclusion = Detection.Exclusion; Numerics = Detection.Numerics;
     validateDetectionInputs(Detection);
 
-%% 2. INSTANTANEOUS SPACECRAFT AND SOLAR GEOMETRY
+%% 2. VALIDATE CDH TIME HISTORY
 
-    assert(nargin>=3,'Provide current elements, CDH cfg, and the simultaneous Earth-to-Sun position.');
+    assert(nargin>=6,'Provide time_s, r_km, v_km_s, h_km, cfg, and sunPosition_km.');
+    validateattributes(time_s,{'numeric'},{'vector','nonempty','real','finite'});
+    time_s = time_s(:);
+    nTimes = numel(time_s);
+    assert(all(diff(time_s)>0),'time_s must be strictly increasing, in seconds.');
+    r_km = validateHistoryVectors(r_km,nTimes,'r_km');
+    v_km_s = validateHistoryVectors(v_km_s,nTimes,'v_km_s');
+    sunPosition_km = validateHistoryVectors(sunPosition_km,nTimes,'sunPosition_km');
+    validateattributes(h_km,{'numeric'},{'vector','numel',nTimes,'real','finite'});
+    h_km = h_km(:);
     assert(isstruct(cfg) && isscalar(cfg),'cfg must be a scalar CDH configuration struct.');
     for field = {'mu','Re','Rsun'}
         name = field{1};
@@ -143,21 +145,19 @@ function [rate_per_s,details] = debrisDetectionRate(elements,cfg,sunPosition_km,
         'cfg.epoch is needed to identify the caller''s fixed reference frame.');
     Earth.Mu_km3_s2 = cfg.mu;
     Earth.Radius_km = cfg.Re;
-    [Orbit,Q,rSpacecraft_km,vSpacecraft_km_s,oe] = spacecraftFromElements(elements,Earth);
-    validateattributes(sunPosition_km,{'numeric'},{'vector','numel',3,'real','finite'});
-    sunPosition_km = sunPosition_km(:)';
-    sunFromSpacecraft_km = sunPosition_km-rSpacecraft_km;
-    sunDistance_km = norm(sunFromSpacecraft_km);
-    assert(sunDistance_km>cfg.Rsun && norm(sunPosition_km)>cfg.Rsun, ...
-        'Sun input must be an Earth-centered position in km, not a unit direction.');
-    sunRTN_km = sunFromSpacecraft_km*Q;
-    sunRTN = sunRTN_km/sunDistance_km;
-    Pointing.CurrentVelocityRTN_km_s = Orbit.VelocityRTN_km_s;
-    normalSign = 1;
-    if sunRTN(3)>0, normalSign=-1; end
-    boresight = getBoresightRTN(Pointing,normalSign);
-    sunSeparation_deg = acosd(max(-1,min(1,dot(boresight,sunRTN))));
-    sunRadius_deg = asind(cfg.Rsun/sunDistance_km);
+
+    % Position is authoritative for geometry and MASTER's spherical altitude.
+    % h_km is preserved as CDH altitude metadata: CDH may use ellipsoidal
+    % drag height, which must not silently replace spherical MASTER altitude.
+    sphericalAltitude_km = vecnorm(r_km,2,2)-cfg.Re;
+    assert(all(sphericalAltitude_km>0),'A spacecraft state is inside the Earth sphere.');
+    altitudeDifference_km = h_km-sphericalAltitude_km;
+    if any(abs(altitudeDifference_km)>0.001)
+        warning('Detection:AltitudeConvention', ...
+            ['CDH h differs from |r|-cfg.Re by up to %.6g km. Position r controls ' ...
+             'geometry; h is retained in details. Check altitude convention and units.'], ...
+            max(abs(altitudeDifference_km)));
+    end
 
 %% 3. LOAD AND CACHE MASTER DENSITY / SENSOR CSV
 
@@ -183,109 +183,183 @@ function [rate_per_s,details] = debrisDetectionRate(elements,cfg,sunPosition_km,
             'Representative diameters exceed sensor CSV coverage.');
     end
 
-%% 4. EXCLUSION CHECK AND QUALIFIED PASSAGE RATE
+%% 4. EVALUATE EACH SUPPLIED TIME (NO ORBIT PROPAGATION)
 
-    nBins = size(Debris.SizeBins_cm,1);
-    rate_per_s = zeros(1,nBins);
-    science = Debris.SizeBins_cm(:,1)>=Debris.ScienceSizeRange_cm(1) & ...
-        Debris.SizeBins_cm(:,2)<=Debris.ScienceSizeRange_cm(2);
-    beta_deg = Sensor.FOV_deg/2;
-    if strcmpi(Sensor.FOVShape,'Square'), beta_deg=atand(sqrt(2)*tand(beta_deg)); end
-    sunBlocked = sunSeparation_deg<=beta_deg+Exclusion.SunClearance_deg+sunRadius_deg;
+    historyRates = zeros(nTimes,size(Debris.SizeBins_cm,1));
+    historyStatus = strings(nTimes,1);
+    historyBoresight = zeros(nTimes,3);
+    historyVelocityRTN = zeros(nTimes,3);
+    historySunSeparation = zeros(nTimes,1);
+    historySunRadius = zeros(nTimes,1);
+    historySunExcluded = false(nTimes,1);
+    historyPhase = nan(nTimes,2);
+    historyChordCount = zeros(nTimes,1);
+    historyQualified = zeros(size(historyRates));
+    historyInclination = zeros(nTimes,1);
+    geometryBuilds = 0;
+    for it = 1:nTimes
+        [Orbit,Q,rSpacecraft_km,vSpacecraft_km_s] = ...
+            spacecraftFromCartesian(r_km(it,:),v_km_s(it,:),Earth);
+        sunAtTime_km = sunPosition_km(it,:);
+        validateattributes(sunAtTime_km,{'numeric'},{'vector','numel',3,'real','finite'});
+        sunAtTime_km = sunAtTime_km(:)';
+        sunFromSpacecraft_km = sunAtTime_km-rSpacecraft_km;
+        sunDistance_km = norm(sunFromSpacecraft_km);
+        assert(sunDistance_km>cfg.Rsun && norm(sunAtTime_km)>cfg.Rsun, ...
+            'Sun input must be an Earth-centered position in km, not a unit direction.');
+        sunRTN_km = sunFromSpacecraft_km*Q;
+        sunRTN = sunRTN_km/sunDistance_km;
+        Pointing.CurrentVelocityRTN_km_s = Orbit.VelocityRTN_km_s;
+        normalSign = 1;
+        if sunRTN(3)>0, normalSign=-1; end
+        boresight = getBoresightRTN(Pointing,normalSign);
+        sunSeparation_deg = acosd(max(-1,min(1,dot(boresight,sunRTN))));
+        sunRadius_deg = asind(cfg.Rsun/sunDistance_km);
 
-    details.Status = "NoQualifiedPassages";
-    details.SizeBins_cm = Debris.SizeBins_cm;
-    details.RepresentativeDiameter_cm = Debris.RepresentativeDiameter_cm;
-    details.ScienceBin = science';
-    details.InputElements = oe;
-    details.Position_km = rSpacecraft_km;
-    details.Velocity_km_s = vSpacecraft_km_s;
-    details.VelocityRTN_km_s = Orbit.VelocityRTN_km_s;
-    details.SphericalAltitude_km = Orbit.Radius_km-cfg.Re;
-    details.FrameEpoch = cfg.epoch;
-    details.FrameConvention = "Caller mean equator/equinox of epoch; Sun must match";
-    details.BoresightRTN = boresight;
-    details.SunSeparation_deg = sunSeparation_deg;
-    details.SunAngularRadius_deg = sunRadius_deg;
-    details.SunExcluded = sunBlocked;
-    details.PhaseRange_deg = [NaN NaN];
-    details.PhaseInterpolationEnabled = Sensor.UsePhaseAngleCSV;
-    details.FixedResponsePhase_deg = Sensor.FixedPhaseAngle_deg;
-    details.FixedPhaseApproximation = ~Sensor.UsePhaseAngleCSV;
-    details.SensorCSV = Sensor.CSVFile;
-    details.SensorFOV_deg = Sensor.FOV_deg;
-    details.MASTERFile = masterPath;
-    details.MASTERReferenceEpoch = Environment.ReferenceEpoch;
-    details.MASTERSimulationInterval = Environment.SimulationInterval;
-    details.PopulationSummary = Environment.Summary;
-    details.ObservableChordSamples = 0;
-    details.QualifiedChordSamples = zeros(1,nBins);
-    details.Numerics = Numerics;
-    details.EarthExclusionModel = "Conservative equatorial-radius sphere plus limb margin";
-    details.RateMeaning = "Qualified object passages per second for one spacecraft";
+        % Existing instantaneous qualification, unchanged for each state.
+        nBins = size(Debris.SizeBins_cm,1);
+        rate_per_s = zeros(1,nBins);
+        science = Debris.SizeBins_cm(:,1)>=Debris.ScienceSizeRange_cm(1) & ...
+            Debris.SizeBins_cm(:,2)<=Debris.ScienceSizeRange_cm(2);
+        beta_deg = Sensor.FOV_deg/2;
+        if strcmpi(Sensor.FOVShape,'Square'), beta_deg=atand(sqrt(2)*tand(beta_deg)); end
+        sunBlocked = sunSeparation_deg<=beta_deg+Exclusion.SunClearance_deg+sunRadius_deg;
 
-    if sunBlocked
-        details.Status = "SunExcluded";
-    else
-        % Geometry is built only for the boresight used at this instant.
-        effectivePointing = Pointing;
-        effectivePointing.Mode = "CustomRTN";
-        effectivePointing.CustomRTN = boresight;
-        effectivePointing.ChooseAntiSunNormal = false;
-        inclinationKey = {Debris.InclinationModel};
-        if strcmpi(Debris.InclinationModel,'Function')
-            inclinationKey{2} = Debris.InclinationFunction;
-        end
-        geometryKey = {Orbit.Radius_km,Orbit.Inclination_deg,Orbit.VelocityRTN_km_s, ...
-            boresight,Shell,Sensor.Range_km,Sensor.MinRange_km,Sensor.FOV_deg, ...
-            Sensor.FOVShape,inclinationKey, ...
-            Debris.NumInclinationSamples,Debris.NumRAANSamples,Exclusion,Numerics,Earth};
-        if isempty(cachedGeometry) || ~isequaln(geometryKey,cachedGeometry.Key)
-            G = buildEncounterGeometry(Orbit,Shell,Sensor,effectivePointing,Debris, ...
-                Exclusion,Numerics,Earth);
-            V = G{1}.Values;
-            cachedGeometry = struct('Key',{geometryKey},'Values',V);
+        details.Status = "NoQualifiedPassages";
+        details.SizeBins_cm = Debris.SizeBins_cm;
+        details.RepresentativeDiameter_cm = Debris.RepresentativeDiameter_cm;
+        details.ScienceBin = science';
+        details.Inclination_deg = Orbit.Inclination_deg;
+        details.Position_km = rSpacecraft_km;
+        details.Velocity_km_s = vSpacecraft_km_s;
+        details.VelocityRTN_km_s = Orbit.VelocityRTN_km_s;
+        details.SphericalAltitude_km = Orbit.Radius_km-cfg.Re;
+        details.FrameEpoch = cfg.epoch;
+        details.FrameConvention = "Caller mean equator/equinox of epoch; Sun must match";
+        details.BoresightRTN = boresight;
+        details.SunSeparation_deg = sunSeparation_deg;
+        details.SunAngularRadius_deg = sunRadius_deg;
+        details.SunExcluded = sunBlocked;
+        details.PhaseRange_deg = [NaN NaN];
+        details.PhaseInterpolationEnabled = Sensor.UsePhaseAngleCSV;
+        details.FixedResponsePhase_deg = Sensor.FixedPhaseAngle_deg;
+        details.FixedPhaseApproximation = ~Sensor.UsePhaseAngleCSV;
+        details.SensorCSV = Sensor.CSVFile;
+        details.SensorFOV_deg = Sensor.FOV_deg;
+        details.MASTERFile = masterPath;
+        details.MASTERReferenceEpoch = Environment.ReferenceEpoch;
+        details.MASTERSimulationInterval = Environment.SimulationInterval;
+        details.PopulationSummary = Environment.Summary;
+        details.ObservableChordSamples = 0;
+        details.QualifiedChordSamples = zeros(1,nBins);
+        details.Numerics = Numerics;
+        details.EarthExclusionModel = "Conservative equatorial-radius sphere plus limb margin";
+        details.RateMeaning = "Qualified object passages per second for one spacecraft";
+
+        if sunBlocked
+            details.Status = "SunExcluded";
         else
-            V = cachedGeometry.Values;
-        end
-        details.ObservableChordSamples = size(V,1);
-        if isempty(V)
-            details.Status = "NoObservableShellChords";
-        else
-            mid = V(:,1:3);
-            range_km = vecnorm(mid,2,2);
-            phase_deg = [];
-            if Sensor.UsePhaseAngleCSV || Sensor.ReportPhaseDiagnostic
-                % At debris: target-to-sensor=-mid, target-to-Sun=sunRTN_km-mid.
-                targetToSun = sunRTN_km-mid;
-                phaseCos = sum((-mid).*targetToSun,2)./(range_km.*vecnorm(targetToSun,2,2));
-                phase_deg = acosd(max(-1,min(1,phaseCos)));
-                details.PhaseRange_deg = [min(phase_deg),max(phase_deg)];
+            % Geometry is built only for the boresight used at this instant.
+            effectivePointing = Pointing;
+            effectivePointing.Mode = "CustomRTN";
+            effectivePointing.CustomRTN = boresight;
+            effectivePointing.ChooseAntiSunNormal = false;
+            inclinationKey = {Debris.InclinationModel};
+            if strcmpi(Debris.InclinationModel,'Function')
+                inclinationKey{2} = Debris.InclinationFunction;
             end
-            for bin = 1:nBins
-                diameter = Debris.RepresentativeDiameter_cm(bin)*ones(size(range_km));
-                density = queryDensity(Environment,bin,V(:,6));
-                if Sensor.UsePhaseAngleCSV
-                    needed_s = Response.Time(range_km,diameter,phase_deg);
-                else
-                    needed_s = Response.Time(range_km,diameter);
+            geometryKey = {Orbit.Radius_km,Orbit.Inclination_deg,Orbit.VelocityRTN_km_s, ...
+                boresight,Shell,Sensor.Range_km,Sensor.MinRange_km,Sensor.FOV_deg, ...
+                Sensor.FOVShape,inclinationKey, ...
+                Debris.NumInclinationSamples,Debris.NumRAANSamples,Exclusion,Numerics,Earth};
+            if isempty(cachedGeometry) || ~isequaln(geometryKey,cachedGeometry.Key)
+                geometryBuilds = geometryBuilds+1;
+                G = buildEncounterGeometry(Orbit,Shell,Sensor,effectivePointing,Debris, ...
+                    Exclusion,Numerics,Earth);
+                V = G{1}.Values;
+                cachedGeometry = struct('Key',{geometryKey},'Values',V);
+            else
+                V = cachedGeometry.Values;
+            end
+            details.ObservableChordSamples = size(V,1);
+            if isempty(V)
+                details.Status = "NoObservableShellChords";
+            else
+                mid = V(:,1:3);
+                range_km = vecnorm(mid,2,2);
+                phase_deg = [];
+                if Sensor.UsePhaseAngleCSV || Sensor.ReportPhaseDiagnostic
+                    % At debris: target-to-sensor=-mid, target-to-Sun=sunRTN_km-mid.
+                    targetToSun = sunRTN_km-mid;
+                    phaseCos = sum((-mid).*targetToSun,2)./(range_km.*vecnorm(targetToSun,2,2));
+                    phase_deg = acosd(max(-1,min(1,phaseCos)));
+                    details.PhaseRange_deg = [min(phase_deg),max(phase_deg)];
                 end
-                assert(~any(~isfinite(needed_s) & density>0), ...
-                    'Sensor CSV coverage is missing for a sampled range/diameter/phase; no extrapolation is allowed.');
-                qualified = isfinite(needed_s) & V(:,4)>=needed_s;
-                rate_per_s(bin) = sum(density(qualified).*V(qualified,5));
-                details.QualifiedChordSamples(bin) = nnz(qualified);
+                for bin = 1:nBins
+                    diameter = Debris.RepresentativeDiameter_cm(bin)*ones(size(range_km));
+                    density = queryDensity(Environment,bin,V(:,6));
+                    if Sensor.UsePhaseAngleCSV
+                        needed_s = Response.Time(range_km,diameter,phase_deg);
+                    else
+                        needed_s = Response.Time(range_km,diameter);
+                    end
+                    assert(~any(~isfinite(needed_s) & density>0), ...
+                        'Sensor CSV coverage is missing for a sampled range/diameter/phase; no extrapolation is allowed.');
+                    qualified = isfinite(needed_s) & V(:,4)>=needed_s;
+                    rate_per_s(bin) = sum(density(qualified).*V(qualified,5));
+                    details.QualifiedChordSamples(bin) = nnz(qualified);
+                end
+                if any(rate_per_s>0), details.Status="OK"; end
             end
-            if any(rate_per_s>0), details.Status="OK"; end
         end
+        details.Rate_per_s = rate_per_s;
+        details.ScienceRate_per_s = sum(rate_per_s(science));
+        details.OutsideScienceRate_per_s = sum(rate_per_s(~science));
+        details.TotalRate_per_s = sum(rate_per_s);
+        historyRates(it,:) = rate_per_s;
+        historyStatus(it) = details.Status;
+        historyBoresight(it,:) = boresight;
+        historyVelocityRTN(it,:) = Orbit.VelocityRTN_km_s;
+        historySunSeparation(it) = sunSeparation_deg;
+        historySunRadius(it) = sunRadius_deg;
+        historySunExcluded(it) = sunBlocked;
+        historyPhase(it,:) = details.PhaseRange_deg;
+        historyChordCount(it) = details.ObservableChordSamples;
+        historyQualified(it,:) = details.QualifiedChordSamples;
+        historyInclination(it) = Orbit.Inclination_deg;
     end
-    details.Rate_per_s = rate_per_s;
-    details.ScienceRate_per_s = sum(rate_per_s(science));
-    details.OutsideScienceRate_per_s = sum(rate_per_s(~science));
-    details.TotalRate_per_s = sum(rate_per_s);
+
+%% 5. RETURN ALIGNED TIME HISTORIES AND SHARED INPUT METADATA
+
+    % Keep shared sensor/environment metadata once, not once per sample.
+    rate_per_s = historyRates;
+    details.Time_s = time_s;
+    details.Rate_per_s = historyRates;
+    details.Status = historyStatus;
+    details.Position_km = r_km;
+    details.Velocity_km_s = v_km_s;
+    details.InputAltitude_km = h_km;
+    details.SphericalAltitude_km = sphericalAltitude_km;
+    details.AltitudeDifference_km = altitudeDifference_km;
+    details.AltitudePolicy = "Position controls geometry; supplied h is metadata";
+    details.SunPosition_km = sunPosition_km;
+    details.Inclination_deg = historyInclination;
+    details.VelocityRTN_km_s = historyVelocityRTN;
+    details.BoresightRTN = historyBoresight;
+    details.SunSeparation_deg = historySunSeparation;
+    details.SunAngularRadius_deg = historySunRadius;
+    details.SunExcluded = historySunExcluded;
+    details.PhaseRange_deg = historyPhase;
+    details.ObservableChordSamples = historyChordCount;
+    details.QualifiedChordSamples = historyQualified;
+    details.ScienceRate_per_s = sum(historyRates(:,science),2);
+    details.OutsideScienceRate_per_s = sum(historyRates(:,~science),2);
+    details.TotalRate_per_s = sum(historyRates,2);
+    details.GeometryBuildCount = geometryBuilds;
+    details.RateMeaning = "One row per supplied time; qualified passages/s per size bin";
 end
 
-%% 5. LOCAL INPUT AND SPACECRAFT HELPERS
+%% 6. LOCAL INPUT AND SPACECRAFT HELPERS
 
 function output = mergeOptions(defaults,provided,prefix)
 % Reject misspelled options rather than silently ignoring caller settings.
@@ -333,42 +407,31 @@ function validateDetectionInputs(D)
         isscalar(D.Sensor.ReportPhaseDiagnostic) && isscalar(D.Pointing.ChooseAntiSunNormal));
 end
 
-function [Orbit,Q,r,v,oe] = spacecraftFromElements(elements,Earth)
-% Convert instantaneous classical osculating elements, without propagation.
-% This mapping is valid with perturbations when elements use the same mu and
-% frame as the caller's Cartesian state. True anomaly must not be mean anomaly.
-    if isstruct(elements)
-        assert(isscalar(elements),'Supply one spacecraft state per call.');
-        fields = {'a','ecc','inc','raan','argp','nu'};
-        oe = zeros(1,6);
-        for k = 1:6
-            assert(isfield(elements,fields{k}),'Missing current element %s.',fields{k});
-            validateattributes(elements.(fields{k}),{'numeric'},{'scalar','real','finite'});
-            oe(k) = elements.(fields{k});
-        end
-    else
-        validateattributes(elements,{'numeric'},{'vector','numel',6,'real','finite'});
-        oe = elements(:)';
-    end
-    a = oe(1); e = oe(2); inc = oe(3); raan = oe(4); argp = oe(5); nu = oe(6);
-    assert(a>0 && e>=0 && e<1,'Require a>0 km and 0<=ecc<1.');
-    assert(inc>=0 && inc<=180,'Inclination must be degrees in [0,180].');
-    p = a*(1-e^2);
-    radius = p/(1+e*cosd(nu));
-    assert(isfinite(radius) && radius>Earth.Radius_km,'Spacecraft state is inside the Earth exclusion sphere.');
-    radialSpeed = sqrt(Earth.Mu_km3_s2/p)*e*sind(nu);
-    transverseSpeed = sqrt(Earth.Mu_km3_s2/p)*(1+e*cosd(nu));
-    node = [cosd(raan);sind(raan);0];
-    transverseNode = [-sind(raan)*cosd(inc);cosd(raan)*cosd(inc);sind(inc)];
-    u = argp+nu;
-    R = node*cosd(u)+transverseNode*sind(u);
-    T = -node*sind(u)+transverseNode*cosd(u);
-    Q = [R T cross(R,T)];
+function X = validateHistoryVectors(X,nTimes,name)
+% Explicit row convention avoids ambiguity when exactly three times are given.
+    validateattributes(X,{'numeric'},{'2d','nonempty','real','finite'},mfilename,name);
+    if nTimes==1 && isvector(X) && numel(X)==3, X=X(:)'; end
+    assert(isequal(size(X),[nTimes 3]), ...
+        '%s must be N-by-3: one Cartesian vector per time. Transpose 3-by-N arrays.',name);
+end
+
+function [Orbit,Q,r,v] = spacecraftFromCartesian(r,v,Earth)
+% Use CDH Cartesian states directly, including radial velocity for eccentric
+% spacecraft orbits. No element conversion, propagation, or SSO reset.
+    radius = norm(r);
+    assert(radius>Earth.Radius_km,'Spacecraft state is inside the Earth sphere.');
+    angularMomentum = cross(r,v);
+    momentum = norm(angularMomentum);
+    assert(momentum>1e-12*radius*max(norm(v),1), ...
+        'Cannot define RTN for a zero or nearly radial spacecraft velocity.');
+    R = r/radius;
+    N = angularMomentum/momentum;
+    T = cross(N,R);
+    Q = [R' T' N'];
     Orbit.Radius_km = radius;
-    Orbit.Inclination_deg = inc;
-    Orbit.VelocityRTN_km_s = [radialSpeed transverseSpeed 0];
-    r = radius*R';
-    v = Orbit.VelocityRTN_km_s*Q';
+    Orbit.Inclination_deg = acosd(max(-1,min(1,N(3))));
+    % Normal velocity is zero by definition of this instantaneous orbit frame.
+    Orbit.VelocityRTN_km_s = [dot(v,R),momentum/radius,0];
 end
 
 function stamp = fileStamp(path)
@@ -828,25 +891,6 @@ function [mid,L,ray] = observableChords(p,v,b,a,c,Orbit,Shell,Sensor,Exclusion,E
     t0 = bound(:,1:end-1); t1 = bound(:,2:end);
     t = (t0+t1)/2;
     valid = isfinite(t) & t1-t0>1e-10 & t>=-R & t<=R;
-    % matrix-wise math for speed:
-    % points = p+pagemtimes(permute(t,[1,3,2]),repmat(v,1,1,12));
-    % ranges = vecnorm(points,2,2);
-    % heights = vecnorm(points+[Orbit.Radius_km 0 0],2,2)-Earth.Radius_km;
-    % alongs = pagemtimes(points,repmat(b',1,1,12));
-    % if strcmpi(Sensor.FOVShape,'Circular')
-    %     inFOVs = alongs >= ranges*cosd(Sensor.FOV_deg/2);
-    % else
-    %     pointsTimesAs = pagemtimes(points,repmat(a',1,1,12));
-    %     pointsTimesCs = pagemtimes(points,repmat(c',1,1,12));
-    %     inFOVs = alongs >= 0 & abs(pointsTimesAs) <= alongs*tand(Sensor.FOV_deg/2) & ...
-    %             abs(pointsTimesCs) <= alongs*tand(Sensor.FOV_deg/2);
-    % end
-    % clearEarths = -points(:,1,:)<ranges*cosd(limb);
-    % valids = permute(valid,[1,3,2]) & ranges>0 & ranges>=Sensor.MinRange_km & ...
-    %     ranges<=R & heights>=Shell.MinAltitude_km & heights<=Shell.MaxAltitude_km & ...
-    %     inFOVs & clearEarths;
-    % valid = permute(valids,[1,3,2]);
-
     for j = 1:size(t,2)
         point = p+t(:,j)*v;
         range = vecnorm(point,2,2);
