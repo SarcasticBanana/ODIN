@@ -828,6 +828,25 @@ function [mid,L,ray] = observableChords(p,v,b,a,c,Orbit,Shell,Sensor,Exclusion,E
     t0 = bound(:,1:end-1); t1 = bound(:,2:end);
     t = (t0+t1)/2;
     valid = isfinite(t) & t1-t0>1e-10 & t>=-R & t<=R;
+    % matrix-wise math for speed:
+    % points = p+pagemtimes(permute(t,[1,3,2]),repmat(v,1,1,12));
+    % ranges = vecnorm(points,2,2);
+    % heights = vecnorm(points+[Orbit.Radius_km 0 0],2,2)-Earth.Radius_km;
+    % alongs = pagemtimes(points,repmat(b',1,1,12));
+    % if strcmpi(Sensor.FOVShape,'Circular')
+    %     inFOVs = alongs >= ranges*cosd(Sensor.FOV_deg/2);
+    % else
+    %     pointsTimesAs = pagemtimes(points,repmat(a',1,1,12));
+    %     pointsTimesCs = pagemtimes(points,repmat(c',1,1,12));
+    %     inFOVs = alongs >= 0 & abs(pointsTimesAs) <= alongs*tand(Sensor.FOV_deg/2) & ...
+    %             abs(pointsTimesCs) <= alongs*tand(Sensor.FOV_deg/2);
+    % end
+    % clearEarths = -points(:,1,:)<ranges*cosd(limb);
+    % valids = permute(valid,[1,3,2]) & ranges>0 & ranges>=Sensor.MinRange_km & ...
+    %     ranges<=R & heights>=Shell.MinAltitude_km & heights<=Shell.MaxAltitude_km & ...
+    %     inFOVs & clearEarths;
+    % valid = permute(valids,[1,3,2]);
+
     for j = 1:size(t,2)
         point = p+t(:,j)*v;
         range = vecnorm(point,2,2);
