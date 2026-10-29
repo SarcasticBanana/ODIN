@@ -18,7 +18,7 @@ function result = arrayPower(out, cfg, area_m2, overrides)
 p.area_m2 = [0.05 0.09 0.10 0.15 0.20];
 p.areaStudyIncidence_deg = 0;       % baseline area study: normal Sun pointing
 p.incidenceAngles_deg = 0:1:90;     % each angle is a separate thermal/power case
-p.incidenceSweepArea_m2 = 0.199;
+p.incidenceSweepArea_m2 = 0.1977;
 p.incidenceSummaryAngles_deg = 0:15:90;
 
 %% Electrical assumptions

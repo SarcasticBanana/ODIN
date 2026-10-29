@@ -12,11 +12,11 @@ out = propagate(cfg, 10); % out: state history struct from propagate.m
 %% Array power calculation
 % Array sizes, sweep settings and array-plot controls are set at the top of arrayPower.m.
 cfg = config();
-cfg.h = 600;                  % Your chosen altitude [km]
 
 out = propagate(cfg, 10);     % Ale's orbit calculation
 
-arrayResult = arrayPower(out, cfg);
+arrayResult = arrayPower(out, cfg, cfg.power.panelArea, struct('incidenceSweepArea_m2', cfg.power.panelArea));
+% arrayResult: area study and incidence sweep at cfg.power.panelArea from arrayPower.m
 p = arrayResult.params;
 areas = arrayResult.area_m2.';
 if p.showAreaSummary

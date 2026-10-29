@@ -7,3 +7,9 @@ desktop.ini
 # Large validation outputs, kept local
 validation/results/*.mat
 validation/results/SW-All.csv
+
+# Saved MATLAB workspace, kept local
+demos/matlab_workspace.mat
+
+# RUN outputs, kept local
+/results/
