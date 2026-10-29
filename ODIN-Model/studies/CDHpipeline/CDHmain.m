@@ -5,21 +5,24 @@ odinPath;
 
 cfg = config();
 cfg.h = 600;                  % Your chosen altitude [km]
-nOrbit = 2;
+nOrbit = 5;
 out = propagate(cfg, nOrbit);     % Ale's orbit calculation
 N = length(out.t);
 
 lat = sign(out.r(3,:)) .* acosd(vecnorm(out.r(1:2,:)) ./ vecnorm(out.r));
 % figure; plot(out.t,lat);
+% figure; plot(lat,normpdf(lat,0,120));
 
+%%
 debrisRateCoeff = 1; % guess
-dataPerDebris = 1e6; % 1 Mb, guess
+dataPerDebris = 10e6; % 10 Mb, guess
 DLIntervals = [out.T*(0:nOrbit);out.T*(0:nOrbit)+out.T/10];
-K_DL = 1e4; % 1 Mbps, guess
+K_DL = 56e6; % 56 Mbps, probably
 R_GNC = 100; % 100 b/s, guess
 R_EPS = 100;
 R_Struct = 10; % 10 b/s, guess
-pi_c = 5; % compression ratio, guess
+pi_c = 5; % compression ratio, probably
+headerBits = 48;
 
 opts = odeset('NonNegative',1,'MaxStep',10);
 [tout,Dout] = ode45(@(t,D) dataTime(t,D,debrisRateCoeff,out.t,lat,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c), ...
