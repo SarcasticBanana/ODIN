@@ -266,6 +266,7 @@ cntX = accumarray([tb, events(:,1)], 1, [nTb nx]);
 cntY = accumarray([tb, events(:,2)], 1, [nTb ny]);
 
 figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
+% figure('Color','w','Name','Space-time density');
 subplot(1,2,1);
 imagesc(tAxis, 1:nx, log10(1+cntX')); axis xy; colorbar; hold on;
 if showTruth, plot(t_vec, x_bar, 'w--'); end
@@ -284,6 +285,7 @@ xlabel('Time (s)'); ylabel('y [px]'); title('y vs time, log_{10}(1+N)');
 Nimg = accumarray([events(:,2), events(:,1)], 1, [ny nx]);
 
 figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
+% figure('Color','w','Name','Accumulated events');
 imagesc(log10(1+Nimg)); axis image; colormap(gca, hot(256)); colorbar; hold on;
 if showTruth, plot(x_bar, y_bar, 'c--'); end
 xlim([1 nx]); ylim([1 ny]);
