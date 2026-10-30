@@ -197,7 +197,9 @@ function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,
     historyQualified = zeros(size(historyRates));
     historyInclination = zeros(nTimes,1);
     geometryBuilds = 0;
+    % figure;
     for it = 1:nTimes
+        % disp(['looking at step ', num2str(it)])
         [Orbit,Q,rSpacecraft_km,vSpacecraft_km_s] = ...
             spacecraftFromCartesian(r_km(it,:),v_km_s(it,:),Earth);
         sunAtTime_km = sunPosition_km(it,:);
@@ -317,6 +319,9 @@ function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,
         details.OutsideScienceRate_per_s = sum(rate_per_s(~science));
         details.TotalRate_per_s = sum(rate_per_s);
         historyRates(it,:) = rate_per_s;
+        % plot(time_s(1:it), sum(historyRates(1:it,:),2),'o-');
+        % drawnow;
+
         historyStatus(it) = details.Status;
         historyBoresight(it,:) = boresight;
         historyVelocityRTN(it,:) = Orbit.VelocityRTN_km_s;
