@@ -46,9 +46,11 @@ rng(seed);
 %% 1. RUN SETTINGS
 bgMode = 'clean';          % 'clean'  or  'full noise'   (see header)
 
-nx = 1280;  ny = 720;      % sensor size in pixels. MUST match nx/ny in your
+% nx = 1280;  ny = 720;      % sensor size in pixels. MUST match nx/ny in your
                            % angular-rate pipeline.
-T_sim = 2.09;              % total simulated time (seconds)
+nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
+                           % angular-rate pipeline.
+T_sim = 2;              % total simulated time (seconds)
 dt    = 1e-3;              % time step used to LOOK UP the target's light on
                            % each pixel (seconds). Photon arrival times are
                            % NOT limited to this grid. Keep the target's
@@ -88,8 +90,13 @@ Delta_lam = 0.10;          % Relative brightness change that triggers an
                            % event (0.10 = 10%). Bigger = fewer events.
 
 %% 4. TARGET & OPTICS
-x0 = 1280;  y0 = 90;       % Starting centroid of the target (pixels)
-vx = -612.44;  vy = 43.06; % Target velocity (pixels/second). Negative vx =
+x0 = nx;  y0 = 90;       % Starting centroid of the target (pixels)
+vx = -612.44;  vy = -430.06; % Target velocity (pixels/second). Negative vx =
+                           % moving left. Image y points DOWN, so positive vy
+                           % moves the target down the screen.
+% for just noise:
+% x0 = 0;  y0 = 2000;       % Starting centroid of the target (pixels)
+% vx = 0;  vy = 0;          % Target velocity (pixels/second). Negative vx =
                            % moving left. Image y points DOWN, so positive vy
                            % moves the target down the screen.
 Phi_0     = 12000;         % Target's average total photon flux (photons/s),
@@ -265,8 +272,8 @@ tAxis = ((1:nTb)-0.5)*T_sim/nTb;                      % center time of each bin 
 cntX = accumarray([tb, events(:,1)], 1, [nTb nx]);
 cntY = accumarray([tb, events(:,2)], 1, [nTb ny]);
 
-figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
-% figure('Color','w','Name','Space-time density');
+% figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
+figure('Color','w','Name','Space-time density');
 subplot(1,2,1);
 imagesc(tAxis, 1:nx, log10(1+cntX')); axis xy; colorbar; hold on;
 if showTruth, plot(t_vec, x_bar, 'w--'); end
@@ -284,8 +291,8 @@ xlabel('Time (s)'); ylabel('y [px]'); title('y vs time, log_{10}(1+N)');
 % bright streak; the faint speckle is background noise.
 Nimg = accumarray([events(:,2), events(:,1)], 1, [ny nx]);
 
-figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
-% figure('Color','w','Name','Accumulated events');
+% figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
+figure('Color','w','Name','Accumulated events');
 imagesc(log10(1+Nimg)); axis image; colormap(gca, hot(256)); colorbar; hold on;
 if showTruth, plot(x_bar, y_bar, 'c--'); end
 xlim([1 nx]); ylim([1 ny]);
