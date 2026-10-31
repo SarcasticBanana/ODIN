@@ -21,14 +21,15 @@ debrisRates = yData;
 debrisRates = debrisRates(out.t<=out.T);
 debrisRate = repmat(debrisRates,1,3);
 
-dataPerDebris = 7.675e6; % 10 Mb, guess
+dataPerDebris = 37e6; % 10 Mb, guess
+% dataBG = 15e6;
+% dataDebris = 70e6; % when detection
 
-% DLIntervals = [out.T*(0:nOrbit);out.T*(0:nOrbit)+out.T/10];
 st = stations();
 [dl,c] = downlinkTimes(out,cfg,st);
 DLIntervals = dl';
 
-K_DL = 30e6; % 56 Mbps, probably
+K_DL = 56e6; % 56 Mbps, probably
 R_GNC = 100; % 100 b/s, guess
 R_EPS = 100;
 R_Struct = 10; % 10 b/s, guess
@@ -41,32 +42,36 @@ opts = odeset('NonNegative',1,'MaxStep',10);
 [tout,Dout] = ode45(@(t,D) dataTime(t,D,out.t,debrisRate,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c), ...
     [0, out.t(end)],[0; 0],opts);
 %
-debrisRateOut = interp1(out.t,debrisRate,tout); % events/second
+debrisRateOut = interp1(out.t,debrisRate,tout)'; % events/second
 
 DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,i),1:length(DLIntervals),'UniformOutput',false))');
 
 % R_payload = debrisRateOut' * dataPerDebris .* double(~DLIdx);
-R_payload = dataPerDebris .* double(~DLIdx);
+R_payload =  (dataPerDebris) .* double(~DLIdx);
 
 % only downlink data that you can downlink
 K_DLmin = min(Dout(:,1) + 1/pi_c*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
 
 dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
-
+%
 figure; hold on;
 plot(tout,Dout(:,1),'b','LineWidth',2);
 ylabel("Data Stored (Bits)");
 yyaxis('right');
 plot(tout,dDdt,'r','LineWidth',2);
 yline(0,'r--');
+xline(out.T*(1:nOrbit),'k--');
 ylabel("Total Data Rate (Bits/s)");
 xlabel("Time (s)");
 box on; grid on;
+ax = gca;
+ax.YAxis(1).Color = [0 0 1];
+ax.YAxis(2).Color = [1 0 0];
 
 function dDdt = dataTime(t,D,oldTime,debrisRate,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c)
     DLIdx = any(arrayfun(@(i) t>=DLIntervals(1,i) & t<=DLIntervals(2,i),1:length(DLIntervals)));
 
-    % R_payload = interp1(oldTime,debrisRate,t) * dataPerDebris * double(~DLIdx);
+    % debrisRate = interp1(oldTime,debrisRate,t);
     R_payload = dataPerDebris * double(~DLIdx);
 
     % only downlink data that you can downlink
