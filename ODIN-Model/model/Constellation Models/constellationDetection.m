@@ -72,7 +72,7 @@ Orbit.SpacecraftPerPlane = 6;
 Orbit.BaselineLTANSpread_min = 15;
 
 % ---------------- Sensor Geometry / Response ----------------
-Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade.csv');
+Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade1.csv');
 Sensor.FOVShape = "Square";         % "Circular" or "Square"
 Sensor.UseCSVFOV = true;
 Sensor.FOV_deg = 1.4;                 % FULL angle; used if UseCSVFOV=false
