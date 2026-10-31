@@ -77,7 +77,7 @@ function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,
     Defaults.Shell.MinAltitude_km = 600;
     Defaults.Shell.MaxAltitude_km = 1000;
 
-    Defaults.Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade.csv');
+    Defaults.Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade1.csv');
     Defaults.Sensor.FOVShape = "Square"; % "Circular" or "Square"
     Defaults.Sensor.UseCSVFOV = true;
     Defaults.Sensor.FOV_deg = 1.4;         % FULL angle if CSV FOV is disabled
