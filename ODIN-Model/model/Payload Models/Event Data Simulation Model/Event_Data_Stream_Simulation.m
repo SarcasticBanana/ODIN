@@ -48,7 +48,7 @@ bgMode = 'full noise';          % 'clean'  or  'full noise'   (see header)
 
 nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
                            % angular-rate pipeline.
-T_sim = 3;              % total simulated time (seconds)
+T_sim = 4.24;              % total simulated time (seconds)
 dt    = 1e-3;              % time step used to LOOK UP the target's light on
                            % each pixel (seconds). Photon arrival times are
                            % NOT limited to this grid. Keep the target's
@@ -87,8 +87,8 @@ b         = 100.0;         % Gain (how much each photon splashes in). It
 Delta_lam = 0.13;          % Relative brightness change that triggers an
                            % event (0.10 = 10%). Bigger = fewer events.
 %% 4. TARGET & OPTICS - Validation
-x0_init = 2560;  y0_init = 1280;       % Starting centroid of the target (pixels)
-vx = -437;  vy = 0; % Target velocity (pixels/second). Negative vx =
+x0_init = 0;  y0_init = 0;       % Starting centroid of the target (pixels)
+vx = 600;  vy = 600; % Target velocity (pixels/second). Negative vx =
                            % moving left. Image y points DOWN, so positive vy
                            % moves the target down the screen.
 t_delay = 0.0;

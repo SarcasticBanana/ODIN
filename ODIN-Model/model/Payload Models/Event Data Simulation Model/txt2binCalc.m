@@ -20,7 +20,6 @@ pols = rawData(:,3);
 times = rawData(:,4);
 clear rawData;
 
-%%
 nBitsTime = 32*numel(unique(times));
 
 reprepYs = numel(find(ys==circshift(ys,1) & ys==circshift(ys,2)));

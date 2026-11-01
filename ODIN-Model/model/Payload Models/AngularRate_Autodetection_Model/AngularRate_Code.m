@@ -10,9 +10,9 @@ tStart = tic;
  %fname = "C:\Users\HuntR\Aero Undergrad\FA26\Senior Projects\ONEWEB_0023_2024-11-15_18-50-16_cut.txt";
 % % --- Sensor & Optics Settings ---
  nx = 2560;  ny = 2560; % pixels 
- zeroIndexed = false; 
+ zeroIndexed = false;
 
-fname = "C:\Users\HuntR\Aero Undergrad\FA26\Senior Projects\synthetic_debris_events.txt";
+fname = "..\Event Data Simulation Model\synthetic_debris_events.txt";
 %nx = 1280;  ny = 720;        % Match the grid size from your simulator (or 1280x720
 %zeroIndexed = false;      % Simulator outputs 1-based MATLAB coordinates (1 to nx)
 
