@@ -44,13 +44,11 @@ seed = 1;
 rng(seed);
 
 %% 1. RUN SETTINGS
-bgMode = 'clean';          % 'clean'  or  'full noise'   (see header)
+bgMode = 'full noise';          % 'clean'  or  'full noise'   (see header)
 
-% nx = 1280;  ny = 720;      % sensor size in pixels. MUST match nx/ny in your
-                           % angular-rate pipeline.
 nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
                            % angular-rate pipeline.
-T_sim = 2;              % total simulated time (seconds)
+T_sim = 3;              % total simulated time (seconds)
 dt    = 1e-3;              % time step used to LOOK UP the target's light on
                            % each pixel (seconds). Photon arrival times are
                            % NOT limited to this grid. Keep the target's
@@ -67,48 +65,66 @@ noiseRate = 0.10;          % Random "salt" noise added on top of the target
                            % Calibrate this to your real data's median rate.
 
 % --- used by 'full noise' mode only ---
-lambda_r_full = 4.8;       % Reference photon flux (photons/s) in full-noise
+lambda_r_full = 10.76;       % Reference photon flux (photons/s) in full-noise
                            % mode. The closer it is to lam_bg, the QUIETER the
                            % background. lambda_r_full = lam_bg gives zero
                            % noise. With a=10, Delta_lam=0.10, lam_bg=5:
                            %   4.5 -> ~12 ev/s/px   4.7 -> ~4.5 ev/s/px
                            %   4.8 -> ~1.1 ev/s/px  4.9 -> ~0.1 ev/s/px
-maxEventsAllowed = 3e7;    % Safety cap: full-noise mode stops with an error
+maxEventsAllowed = 10e15;    % Safety cap: full-noise mode stops with an error
                            % if its event estimate exceeds this.
 
 % --- used by BOTH modes ---
-lam_bg = 5;                % Sky background light on each pixel (photons/s)
+lam_bg = 12;                % Sky background light on each pixel (photons/s)
 
 %% 3. EVENT CIRCUIT PARAMETERS  (the "leaky bucket")
-a         = 10.0;          % Leak (voltage decay) rate, 1/s. Bigger = the
+a         = 2.55;          % Leak (voltage decay) rate, 1/s. Bigger = the
                            % bucket empties faster = shorter tail and (in full
                            % noise mode) more background events.
 b         = 100.0;         % Gain (how much each photon splashes in). It
                            % scales the thresholds equally, so it does not
                            % change the event rate for steady light.
-Delta_lam = 0.10;          % Relative brightness change that triggers an
+Delta_lam = 0.13;          % Relative brightness change that triggers an
                            % event (0.10 = 10%). Bigger = fewer events.
+%% 4. TARGET & OPTICS - Validation
+x0_init = 2560;  y0_init = 1280;       % Starting centroid of the target (pixels)
+vx = -437;  vy = 0; % Target velocity (pixels/second). Negative vx =
+                           % moving left. Image y points DOWN, so positive vy
+                           % moves the target down the screen.
+t_delay = 0.0;
+x0 = x0_init - (vx * t_delay);
+y0 = y0_init - (vy * t_delay);
 
-%% 4. TARGET & OPTICS
-x0 = nx;  y0 = 90;       % Starting centroid of the target (pixels)
-vx = -612.44;  vy = -430.06; % Target velocity (pixels/second). Negative vx =
-                           % moving left. Image y points DOWN, so positive vy
-                           % moves the target down the screen.
-% for just noise:
-% x0 = 0;  y0 = 2000;       % Starting centroid of the target (pixels)
-% vx = 0;  vy = 0;          % Target velocity (pixels/second). Negative vx =
-                           % moving left. Image y points DOWN, so positive vy
-                           % moves the target down the screen.
 Phi_0     = 12000;         % Target's average total photon flux (photons/s),
                            % summed over all the pixels its blur covers
 mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
                            % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
 f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
-sigma_psf = 1.5;           % Blur (Gaussian PSF standard deviation) in pixels
+sigma_psf = 1.3;           % Blur (Gaussian PSF standard deviation) in pixels
 
 % Optics, used ONLY to print the ground-truth angular rate at the end
 pixPitch_m = 4.86e-6;      % pixel size (meters)
-focalLen_m = 0.6;          % telescope focal length (meters)
+focalLen_m = 0.475;          % telescope focal length (meters)
+
+%% 4. TARGET & OPTICS - Calibrated
+% x0_init = 1280;  y0_init = 90;       % Starting centroid of the target (pixels)
+% vx = -611.54;  vy = 43.36; % Target velocity (pixels/second). Negative vx =
+%                            % moving left. Image y points DOWN, so positive vy
+%                            % moves the target down the screen.
+% t_delay = 0.3901;
+% x0 = x0_init - (vx * t_delay);
+% y0 = y0_init - (vy * t_delay);
+% 
+% Phi_0     = 250000;         % Target's average total photon flux (photons/s),
+%                            % summed over all the pixels its blur covers
+% mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
+%                            % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
+% f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
+% sigma_psf = 1.3;           % Blur (Gaussian PSF standard deviation) in pixels
+% 
+% % Optics, used ONLY to print the ground-truth angular rate at the end
+% pixPitch_m = 4.86e-6;      % pixel size (meters)
+% focalLen_m = 0.6;          % telescope focal length (meters)
 
 %% 5. DERIVED QUANTITIES
 fullNoise = strcmpi(bgMode, 'full noise');
@@ -254,7 +270,70 @@ fprintf('IFOV = %.3f arcsec/px  ->  |omega| = %.2f arcsec/s (%.4f deg/s)\n', ...
 fprintf('heading = %.2f deg, transit %.2f s, %.1f px\n', atan2d(vy,vx), T_sim, v_true*T_sim);
 fprintf('\nFor Event_Data_Diagnostics.m, set:\n');
 fprintf('  trackX0 = %g;  trackY0 = %g;  trackVx = %g;  trackVy = %g;  trackT0 = 0;\n', x0, y0, vx, vy);
+%% 13. SNR REQUIREMENT VERIFICATION (DR2 Validation Output)
+dt_bin   = 0.05;                    % Coherent time bin width (s), matching tracker
+box_half = 2;                       % 5x5 local detection window (m = 25 pixels)
+m_box    = (2*box_half + 1)^2;
 
+% 1. Empirical background clutter rate (events/px/s) outside the target track
+off_track_mask = abs(events(:,2) - y0) > 20;
+n_off_pixels   = nx * (ny - 41);
+r_bg_emp       = sum(off_track_mask) / (n_off_pixels * T_sim);
+
+% Expected noise count (mu_bg) and noise std dev (sigma_bg) in an m_box window per bin
+mu_bg_bin    = m_box * r_bg_emp * dt_bin;
+sigma_bg_bin = sqrt(max(mu_bg_bin, 1e-6));
+
+% 2. Count in-gate events along the target track across each time bin
+n_bins = floor(T_sim / dt_bin);
+N_loc_bins = zeros(n_bins, 1);
+valid_bins = false(n_bins, 1);
+
+for b_idx = 1:n_bins
+    t1 = (b_idx - 1) * dt_bin;
+    t2 = b_idx * dt_bin;
+    t_mid = 0.5 * (t1 + t2);
+    
+    % True centroid position at mid-bin
+    x_c = x0 + vx * t_mid;
+    y_c = y0 + vy * t_mid;
+    
+    % Only evaluate bins where the target is well inside the sensor boundaries
+    if x_c > 10 && x_c < (nx - 10) && y_c > 10 && y_c < (ny - 10)
+        valid_bins(b_idx) = true;
+        in_time = (events(:,4) >= t1) & (events(:,4) < t2);
+        % Events within +/- box_half in Y and along the X streak segment in this bin
+        x_min_bin = min(x0 + vx*t1, x0 + vx*t2) - box_half;
+        x_max_bin = max(x0 + vx*t1, x0 + vx*t2) + box_half;
+        in_box = in_time & (events(:,1) >= x_min_bin) & (events(:,1) <= x_max_bin) ...
+                         & (abs(events(:,2) - y_c) <= box_half);
+        
+        % Normalize count to a 5x5 local cell equivalent
+        streak_len_px = max(1, abs(vx * dt_bin));
+        N_loc_bins(b_idx) = sum(in_box) * ((2*box_half + 1) / streak_len_px);
+    end
+end
+
+N_loc_valid  = N_loc_bins(valid_bins);
+mean_N_loc   = mean(N_loc_valid);
+SNR_per_bin  = (mean_N_loc - mu_bg_bin) / sigma_bg_bin;
+SNR_integrated_track = SNR_per_bin * sqrt(sum(valid_bins));
+
+fprintf('\n================ DR2 SNR VERIFICATION REPORT ================\n');
+fprintf('  Empirical Background Rate (r_bg) : %.4f events/px/s\n', r_bg_emp);
+fprintf('  Expected Noise in 5x5 Bin (mu_bg): %.4f +/- %.4f events\n', mu_bg_bin, sigma_bg_bin);
+fprintf('  Mean Target Events per 5x5 Cell  : %.2f events\n', mean_N_loc);
+fprintf('  Single-Bin Event SNR (SNR_bin)   : %.2f  (Req: >= 6.0)\n', SNR_per_bin);
+fprintf('  Integrated Track SNR (%2d bins)   : %.2f  (TBD Gain = sqrt(K))\n', ...
+    sum(valid_bins), SNR_integrated_track);
+if SNR_per_bin >= 6.0
+    fprintf('  VERDICT: PASSES SINGLE-BIN & TRACK SNR REQUIREMENT\n');
+elseif SNR_integrated_track >= 6.0
+    fprintf('  VERDICT: PASSES VIA TRACK-BEFORE-DETECT INTEGRATION GAIN\n');
+else
+    fprintf('  VERDICT: FAILS SNR REQUIREMENT (< 6.0)\n');
+end
+fprintf('=============================================================\n');
 %% 12. PLOTS  (two quick-look figures)
 % The calibration plots (windowed snapshot, event rate vs time, offsets from
 % the track) live in Event_Data_Diagnostics.m so the SAME code can be run on
@@ -272,8 +351,7 @@ tAxis = ((1:nTb)-0.5)*T_sim/nTb;                      % center time of each bin 
 cntX = accumarray([tb, events(:,1)], 1, [nTb nx]);
 cntY = accumarray([tb, events(:,2)], 1, [nTb ny]);
 
-% figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
-figure('Color','w','Name','Space-time density');
+figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
 subplot(1,2,1);
 imagesc(tAxis, 1:nx, log10(1+cntX')); axis xy; colorbar; hold on;
 if showTruth, plot(t_vec, x_bar, 'w--'); end
@@ -291,8 +369,7 @@ xlabel('Time (s)'); ylabel('y [px]'); title('y vs time, log_{10}(1+N)');
 % bright streak; the faint speckle is background noise.
 Nimg = accumarray([events(:,2), events(:,1)], 1, [ny nx]);
 
-% figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
-figure('Color','w','Name','Accumulated events');
+figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
 imagesc(log10(1+Nimg)); axis image; colormap(gca, hot(256)); colorbar; hold on;
 if showTruth, plot(x_bar, y_bar, 'c--'); end
 xlim([1 nx]); ylim([1 ny]);
