@@ -5,6 +5,7 @@ odinPath;
 
 cfg = config();
 cfg.h = 600;                  % Your chosen altitude [km]
+cfg.ode.dtOut = 1*60;
 nOrbit = 3;
 out = propagate(cfg, nOrbit);     % Ale's orbit calculation
 N = length(out.t);
@@ -13,17 +14,20 @@ N = length(out.t);
 % figure; plot(out.t,lat);
 % figure; plot(lat,normpdf(lat,0,120));
 
-% [rate_per_s,details] = debrisDetectionRate(out.t,out.r',out.v',vecnorm(out.r)'+cfg.Re,cfg,out.rsun');
+% [rate_per_s,details] = debrisDetectionRate(out.t,out.r',out.v',vecnorm(out.r)'-cfg.Re,cfg,out.rsun');
 % debrisRate = ones(1,N)*details.TotalRate_per_s;
+
 load('debrisRates.mat');
 debrisT = xData;
 debrisRates = yData;
 debrisRates = debrisRates(out.t<=out.T);
-debrisRate = repmat(debrisRates,1,3);
+debrisRate = repmat(debrisRates,1,nOrbit);
 
-dataPerDebris = 37e6; % 10 Mb, guess
-% dataBG = 15e6;
-% dataDebris = 70e6; % when detection
+dataPerDebris = 20e6;
+% dataBG = 17e6;
+% dataDebris = 20e6; % when detection
+
+t = 3600*24*10;
 
 st = stations();
 [dl,c] = downlinkTimes(out,cfg,st);
@@ -36,7 +40,7 @@ R_Struct = 10; % 10 b/s, guess
 headerBits = 48;
 dataBitsPerHeader = 65536*8;
 packetizationInflation = (headerBits+dataBitsPerHeader)/dataBitsPerHeader;
-pi_c = 7.675/5.6*packetizationInflation; % compression ratio, probably
+pi_c = 1.3*packetizationInflation; % compression ratio, probably
 
 opts = odeset('NonNegative',1,'MaxStep',10);
 [tout,Dout] = ode45(@(t,D) dataTime(t,D,out.t,debrisRate,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c), ...

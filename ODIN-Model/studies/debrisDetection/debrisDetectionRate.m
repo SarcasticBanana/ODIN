@@ -78,6 +78,7 @@ function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,
     Defaults.Shell.MaxAltitude_km = 1000;
 
     Defaults.Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade1.csv');
+    % Defaults.Sensor.CSVFile = fullfile(modelFolder,'Sensor_Residence_Time_Trade 3.csv');
     Defaults.Sensor.FOVShape = "Square"; % "Circular" or "Square"
     Defaults.Sensor.UseCSVFOV = true;
     Defaults.Sensor.FOV_deg = 1.4;         % FULL angle if CSV FOV is disabled
@@ -197,7 +198,7 @@ function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,
     historyQualified = zeros(size(historyRates));
     historyInclination = zeros(nTimes,1);
     geometryBuilds = 0;
-    % figure;
+    figure;
     for it = 1:nTimes
         % disp(['looking at step ', num2str(it)])
         [Orbit,Q,rSpacecraft_km,vSpacecraft_km_s] = ...
@@ -319,8 +320,8 @@ function [rate_per_s,details] = debrisDetectionRate(time_s,r_km,v_km_s,h_km,cfg,
         details.OutsideScienceRate_per_s = sum(rate_per_s(~science));
         details.TotalRate_per_s = sum(rate_per_s);
         historyRates(it,:) = rate_per_s;
-        % plot(time_s(1:it), sum(historyRates(1:it,:),2),'o-');
-        % drawnow;
+        plot(time_s(1:it), sum(historyRates(1:it,:),2),'o-');
+        drawnow;
 
         historyStatus(it) = details.Status;
         historyBoresight(it,:) = boresight;
