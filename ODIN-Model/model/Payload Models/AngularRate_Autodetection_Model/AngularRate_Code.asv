@@ -1,0 +1,267 @@
+%% MODULAR_ANGULAR_RATE_PIPELINE
+% Extracts the kinematic angular rate of a target.
+% Built on a reusable foundational framework for event camera processing.
+
+clear; clc; close all;
+tStart = tic;
+
+%% 1. USER INPUTS
+fname = "C:\Users\HuntR\Aero Undergrad\FA26\Senior Projects\ONEWEB_0023_2024-11-15_18-50-16_cut.txt";
+if isstring(fname); fname = convertStringsToChars(fname); end
+
+% --- Sensor & Optics Settings ---
+nx = 1280;  ny = 720;              
+pixPitch_m = 4.86e-6;              
+focalLen_m = 0.6;                  
+IFOV_rad   = 2*atan(pixPitch_m/(2*focalLen_m));   
+zeroIndexed = true;                
+nw = 21;                           
+
+% --- Steady-Source (Noise) Rejection ---
+nSeg    = 10;                      
+segFrac = 0.6;                     
+maskPad = 2;                       
+
+% --- Detection Settings ---
+faBudget = 0.01;                   
+boxHalf  = 2;                      
+cenHalf  = 3;                      
+
+% --- Angular Rate Specific Settings ---
+dtCoarse = 0.05;                   
+pxPerBin = 3;                      
+clipSigma = 3;                     
+minResid  = 1.5;                   
+
+%% 2. EXECUTE REUSABLE FOUNDATION (Can be copied to Spin/Size models)
+% Load and format raw asynchronous events
+[t, x, y, T_duration] = load_event_data(fname, nx, ny, zeroIndexed);
+
+% Build the spatial noise mask (removes stars and hot pixels)
+steadyMask = build_steady_source_mask(t, x, y, T_duration, nx, ny, nSeg, segFrac, maskPad);
+
+% Generate the optical matched-filter stencil and package configuration
+cfg = init_matched_filter(nw, nx, ny, steadyMask, boxHalf, cenHalf, faBudget);
+
+%% 3. EXECUTE ANGULAR RATE SPECIFIC PIPELINE
+% Run the two-pass kinematic tracker and robust line fit
+[results, track_data] = calculate_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerBin, clipSigma, minResid);
+
+% Report and Plot
+report_angular_rate(results, track_data, dtCoarse, toc(tStart));
+plot_angular_rate(x, y, nx, ny, steadyMask, results, track_data);
+
+
+%% =======================================================================
+%               REUSABLE FOUNDATION FUNCTIONS
+% ========================================================================
+
+function [t, x, y, T_duration] = load_event_data(fname, nx, ny, zeroIndexed)
+    fid = fopen(fname,'r'); firstLine = fgetl(fid); fclose(fid);
+    hasHeader = isnan(str2double(strtok(firstLine,', ')));
+    dat = readmatrix(fname,'NumHeaderLines',double(hasHeader));
+    dat = dat(:,1:4);
+    
+    dat = dat(:,[4 1 2 3]);            % [t x y p] so unique() also sorts by time
+    dat = unique(dat,'rows');          % Deduplicate events
+    
+    t = (dat(:,1) - dat(1,1))/1e6;     % [s] relative to first event
+    x = dat(:,2) + zeroIndexed;        % 1-based pixel index
+    y = dat(:,3) + zeroIndexed;
+    T_duration = t(end);
+    
+    assert(min(x)>=1 && max(x)<=nx && min(y)>=1 && max(y)<=ny, ...
+        'Pixel coordinates fall outside nx-by-ny. Check nx, ny and zeroIndexed.');
+    fprintf('Loaded %d events, Duration: %.3f s\n', numel(t), T_duration);
+end
+
+function steadyMask = build_steady_source_mask(t, x, y, T, nx, ny, nSeg, segFrac, maskPad)
+    seg  = min(floor(t/T*nSeg)+1, nSeg);
+    nOcc = zeros(ny,nx);               
+    for s = 1:nSeg
+        ii = (seg == s);
+        if ~any(ii), continue; end
+        nOcc = nOcc + (accumarray([y(ii) x(ii)],1,[ny nx]) > 0);
+    end
+    steady     = nOcc >= ceil(segFrac*nSeg);
+    steadyMask = conv2(double(steady), ones(2*maskPad+1), 'same') > 0;
+    fprintf('Steady-source pixels masked: %d\n', nnz(steadyMask));
+end
+
+function cfg = init_matched_filter(nw, nx, ny, steadyMask, boxHalf, cenHalf, faBudget)
+    g = matchedfilter_psf(nw);
+    [U,Sv,V] = svd(g);
+    gy = U(:,1)*sqrt(Sv(1,1));
+    gx = V(:,1)*sqrt(Sv(1,1));
+    if sum(gy) < 0, gy = -gy; gx = -gx; end
+    
+    cfg = struct('nx',nx,'ny',ny,'mask',steadyMask,'gy',gy,'gx',gx, ...
+                 'boxHalf',boxHalf,'cenHalf',cenHalf,'fa',faBudget);
+end
+
+function trk = track_bins(t, x, y, dt, cfg)
+% Generic centroid tracker: Slides the matched filter over a specific time bin
+    bin   = floor(t/dt) + 1;                    
+    nBins = bin(end);
+    cnt   = accumarray(bin,1,[nBins 1]);
+    first = [1; 1+cumsum(cnt)];                 
+
+    nFree   = nnz(~cfg.mask);                   
+    boxArea = (2*cfg.boxHalf+1)^2;
+    nBox    = nFree/boxArea;                    
+
+    trk = nan(nBins,5);
+    for k = 1:nBins
+        if cnt(k) < 2, continue; end
+        ii = first(k):first(k+1)-1;
+        N = accumarray([y(ii) x(ii)],1,[cfg.ny cfg.nx]);
+        N(cfg.mask) = 0;                        
+        nEv = sum(N(:));
+        if nEv == 0, continue; end
+
+        MF = conv2(cfg.gy, cfg.gx.', N, 'same');   
+        [~,imax] = max(MF(:));
+        [iy,ix]  = ind2sub([cfg.ny cfg.nx], imax);
+
+        ya = max(iy-cfg.boxHalf,1);  yb = min(iy+cfg.boxHalf,cfg.ny);
+        xa = max(ix-cfg.boxHalf,1);  xb = min(ix+cfg.boxHalf,cfg.nx);
+        nLoc = sum(N(ya:yb,xa:xb),'all');
+
+        muBg = nEv/nFree*boxArea;
+        nMin = 1;
+        while nBox*gammainc(muBg,nMin) > cfg.fa && nMin < 1000
+            nMin = nMin + 1;
+        end
+        if nLoc < nMin, continue; end
+
+        ya = max(iy-cfg.cenHalf,1);  yb = min(iy+cfg.cenHalf,cfg.ny);
+        xa = max(ix-cfg.cenHalf,1);  xb = min(ix+cfg.cenHalf,cfg.nx);
+        W = N(ya:yb,xa:xb);
+        [XX,YY] = meshgrid(xa:xb,ya:yb);
+        Itot = sum(W(:));
+        trk(k,:) = [(k-0.5)*dt, sum(W(:).*XX(:))/Itot, sum(W(:).*YY(:))/Itot, nLoc, nMin];
+    end
+    trk = trk(~isnan(trk(:,1)),:);
+end
+
+
+%% =======================================================================
+%               ANGULAR RATE SPECIFIC FUNCTIONS
+% ========================================================================
+
+function [results, track_data] = calculate_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerBin, clipSigma, minResid)
+    % Pass 1: Coarse speed estimation
+    trk1 = track_bins(t, x, y, dtCoarse, cfg);
+    assert(size(trk1,1) >= 5, 'Pass 1 found fewer than 5 detections.');
+    [px1, py1, ~] = robust_line_fit(trk1(:,1), trk1(:,2), trk1(:,3), clipSigma, minResid);
+    v1 = hypot(px1(1), py1(1));
+    
+    % Pass 2: Fine tracking utilizing dynamic integration time
+    dtFine = min(dtCoarse, max(0.001, round(pxPerBin/v1, 3)));
+    trk = track_bins(t, x, y, dtFine, cfg);
+    assert(size(trk,1) >= 5, 'Pass 2 found fewer than 5 detections.');
+    
+    tt = trk(:,1);  xs = trk(:,2);  ys = trk(:,3);
+    [px, py, keep, res] = robust_line_fit(tt, xs, ys, clipSigma, minResid);
+    
+    tk  = tt(keep);  nk = numel(tk);
+    Stt = sum((tk-mean(tk)).^2);
+    sx  = sqrt(sum((xs(keep)-polyval(px,tk)).^2)/(nk-2))/sqrt(Stt);   
+    sy  = sqrt(sum((ys(keep)-polyval(py,tk)).^2)/(nk-2))/sqrt(Stt);
+    
+    vx = px(1);  vy = py(1);  vmag = hypot(vx,vy);                    
+    rad2as = 180/pi*3600;
+    
+    results.w_x = IFOV_rad*vx*rad2as;   
+    results.w_y = IFOV_rad*vy*rad2as;             
+    results.w   = IFOV_rad*vmag*rad2as;
+    results.sw  = IFOV_rad*sqrt((vx*sx)^2 + (vy*sy)^2)/vmag*rad2as;
+    results.heading = atan2d(vy,vx);           
+    results.vx = vx; results.vy = vy; results.vmag = vmag;
+    results.sx = sx; results.sy = sy;
+    results.dtFine = dtFine; results.IFOV = IFOV_rad*rad2as;
+    
+    ik = find(keep);  i0 = ik(1);  i1 = ik(end);
+    results.w2pt = IFOV_rad*hypot(xs(i1)-xs(i0), ys(i1)-ys(i0))/(tt(i1)-tt(i0))*rad2as;
+    
+    track_data.tt = tt; track_data.xs = xs; track_data.ys = ys;
+    track_data.tk = tk; track_data.nk = nk; 
+    track_data.px = px; track_data.py = py;
+    track_data.keep = keep; track_data.res = res;
+    track_data.total_trk = size(trk,1);
+end
+
+function [px, py, keep, res] = robust_line_fit(tt, xx, yy, clipSigma, minResid)
+    n   = numel(tt);
+    sub = round(linspace(1,n,min(n,600)));      
+    ts = tt(sub);  xsub = xx(sub);  ysub = yy(sub);
+    [I,J] = find(triu(true(numel(sub)),1));
+    dtp  = ts(J) - ts(I);
+    good = dtp > 0;
+    vx0 = median((xsub(J(good)) - xsub(I(good)))./dtp(good));
+    vy0 = median((ysub(J(good)) - ysub(I(good)))./dtp(good));
+    px = [vx0, median(xx - vx0*tt)];
+    py = [vy0, median(yy - vy0*tt)];
+
+    keep = true(size(tt));
+    for it = 1:20
+        res = hypot(xx - polyval(px,tt), yy - polyval(py,tt));
+        s = max(1.4826*median(res(keep)), minResid);
+        newKeep = res < clipSigma*s;
+        if it > 1 && isequal(newKeep,keep), break; end
+        keep = newKeep;
+        px = polyfit(tt(keep),xx(keep),1);
+        py = polyfit(tt(keep),yy(keep),1);
+    end
+    res = hypot(xx - polyval(px,tt), yy - polyval(py,tt));
+end
+
+function report_angular_rate(r, td, dtCoarse, elapsed_time)
+    fprintf('\n=========== ANGULAR RATE RESULT ===========\n');
+    fprintf('Detections: %d   Inliers: %d (%.1f%%)   rms residual: %.2f px\n', ...
+        td.total_trk, td.nk, 100*td.nk/td.total_trk, sqrt(mean(td.res(td.keep).^2)));
+    fprintf('Transit: %.2f to %.2f s (%.2f s)   bin dt = %.3f s   motion = %.1f px/bin\n', ...
+        min(td.tk), max(td.tk), max(td.tk)-min(td.tk), r.dtFine, r.vmag*r.dtFine);
+    fprintf('Pixel velocity : vx = %+.2f +/- %.2f px/s,  vy = %+.2f +/- %.2f px/s\n', r.vx, r.sx, r.vy, r.sy);
+    fprintf('Angular rate   : wx = %+.1f arcsec/s,  wy = %+.1f arcsec/s\n', r.w_x, r.w_y);
+    fprintf('|omega| = %.1f +/- %.1f arcsec/s = %.4f deg/s (statistical, 1-sigma)\n', ...
+        r.w, r.sw, r.w/3600);
+    fprintf('Heading = %.1f deg (from +x toward +y; image y points down)\n', r.heading);
+    fprintf('Two-point slide formula (first/last inlier): %.1f arcsec/s\n', r.w2pt);
+    
+    if r.vmag*r.dtFine > 5
+        warning('Motion per bin is %.1f px (> 5): expect smear. Lower pxPerBin or dtCoarse.', r.vmag*r.dtFine);
+    end
+    fprintf('Elapsed: %.1f s\n', elapsed_time);
+end
+
+function plot_angular_rate(x, y, nx, ny, steadyMask, r, td)
+    Nimg = accumarray([y x],1,[ny nx]);
+    Nimg(steadyMask) = 0;              
+    tl = [min(td.tk) max(td.tk)];
+
+    figure('Position',[50 50 1300 800]);
+    subplot(2,2,1);
+    imagesc(Nimg); axis image; colormap(gca,hot(256)); caxis([0 3]); hold on
+    plot(td.xs(td.keep),td.ys(td.keep),'g.','MarkerSize',5);
+    plot(td.xs(~td.keep),td.ys(~td.keep),'rx');
+    plot(polyval(td.px,tl),polyval(td.py,tl),'c-','LineWidth',1);
+    xlabel('x [px]'); ylabel('y [px]');
+    title(sprintf('Transient events and track:  |\\omega| = %.1f arcsec/s', r.w));
+    legend('inlier','rejected','fit','Location','southoutside','Orientation','horizontal');
+
+    subplot(2,2,2);
+    plot(td.tt(td.keep),td.xs(td.keep),'g.'); hold on; plot(td.tt(~td.keep),td.xs(~td.keep),'rx');
+    plot(tl,polyval(td.px,tl),'k-'); grid on
+    xlabel('Time [s]'); ylabel('x [px]'); title(sprintf('v_x = %+.1f px/s', r.vx));
+
+    subplot(2,2,3);
+    plot(td.tt(td.keep),td.ys(td.keep),'g.'); hold on; plot(td.tt(~td.keep),td.ys(~td.keep),'rx');
+    plot(tl,polyval(td.py,tl),'k-'); grid on
+    xlabel('Time [s]'); ylabel('y [px]'); title(sprintf('v_y = %+.1f px/s', r.vy));
+
+    subplot(2,2,4);
+    plot(td.tt(td.keep),td.res(td.keep),'g.'); hold on; plot(td.tt(~td.keep),td.res(~td.keep),'rx'); grid on
+    ylim([0 max(3,1.5*max(td.res(td.keep)))]);
+    xlabel('Time [s]'); ylabel('Distance from fit [px]'); title('Residuals');
+end
