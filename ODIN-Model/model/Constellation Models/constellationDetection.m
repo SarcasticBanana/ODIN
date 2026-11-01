@@ -1,5 +1,6 @@
 %% Constellation Debris Detection Trade Study
 %
+% Updated: 2026-10-31 - exact-diameter altitude profiles and cached qualification.
 % Version: 2.5 - MASTER altitude-diameter density and sensor response
 % Based on Sean Elliott's V2.3. Last modified: 2026-10-28.
 %
@@ -68,7 +69,7 @@ Orbit.Type = "SSO";                    % "SSO" or "Circular"
 Orbit.Inclination_deg = 97.36;         % Used only for "Circular"
 Orbit.NominalLTAN_hr = 18;
 Orbit.NumPlanes = 3;
-Orbit.SpacecraftPerPlane = 6;
+Orbit.SpacecraftPerPlane = 9;
 Orbit.BaselineLTANSpread_min = 15;
 
 % ---------------- Sensor Geometry / Response ----------------
@@ -109,7 +110,7 @@ Debris.MASTERFileName = "ODIN_2024_D010_070_t.__1";
 % auto-discovery requires exactly one suitable table, never a guessed latest
 % file. Old altitude-declination tables are ignored in auto-discovery mode.
 Debris.SizeBins_cm = [1 1.5; 1.5 2.5; 2.5 3.1; 3.1 5];
-Debris.RepresentativeDiameter_cm = [1.25 2.5 3 5];
+Debris.RepresentativeDiameter_cm = [1 2 3 5];
 Debris.ScienceSizeRange_cm = [1 3.1];
 Debris.MaxUsableDiameter_cm = 5;
 % Data above this explicit limit are not counted. For a larger modeled size
@@ -157,12 +158,12 @@ Trade.SpacecraftAltitude_km = 570:10:700;
 % Optional trades retain V2.3's intent, but no unique/repeat-object plots.
 
 % ---------------- Numerical Settings ----------------
-Numerics.VelocityAltitudeStep_km = 50;
+Numerics.VelocityAltitudeStep_km = 10;
 % Velocity is computed at each altitude interval's center using the
 % circular-orbit formula. Whole FOV chords are then assigned by their midpoint
 % altitude. Internal altitude boundaries do NOT truncate the residence time.
-Numerics.ProjectedAlongSamples = 40;
-Numerics.ProjectedAcrossSamples = 12;
+Numerics.ProjectedAlongSamples = 160;
+Numerics.ProjectedAcrossSamples = 24;
 Numerics.OrbitalPositionSamples = 12;
 Numerics.MissionDateSamples = 24;
 Numerics.RunGeometrySelfChecks = true; % Small analytic checks before the main run
@@ -170,12 +171,23 @@ Numerics.RunGeometrySelfChecks = true; % Small analytic checks before the main r
 % latitude. Increase date/orbit/area/orientation resolution for convergence.
 % These sample counts are a starting setting, not a demonstrated convergence.
 
+% ---------------- Altitude Capability Diagnostics ----------------
+Capability.Enabled = true;
+Capability.Diameters_cm = [1 2 3 5]; % Exact sensor diameters; rate-bin reps unchanged
+Capability.AltitudeStep_km = 10;
+% Fraction = qualified/geometric passage weight per midpoint-altitude bin.
+% Each diameter uses density from the configured bin containing it; at shared
+% boundaries choose the bin ending at that diameter (3 cm -> 2.5-3 cm).
+% This is a within-bin population-weighted sensor diagnostic, not a count of
+% objects of an exact diameter, shell-volume coverage, or guaranteed range.
+% NaN fraction means no observable passage weight; zero means none qualify.
+
 % ---------------- Plot / Output Controls ----------------
 Plot.MakeFigures = true;
-Plot.SaveFigures = false;
+Plot.SaveFigures = true;
 Plot.OutputFolder = fullfile(modelFolder,'trade_study_figures');
 Plot.ExportResolution_dpi = 300;
-Output.SaveTables = false;
+Output.SaveTables = true;
 Output.Folder = fullfile(modelFolder,'model_results');
 Output.ReportPoissonProbability = false;
 % Optional P(at least one) assumes a stationary Poisson passage process;
@@ -263,9 +275,15 @@ fprintf('Downtime: %.1f min/day; availability %.6f.\n', ...
 % optional phase angle; they do not introduce declination weighting.
 Geometry = buildEncounterGeometry(Orbit,Shell,Sensor,Pointing,Debris, ...
     Exclusion,Numerics,Earth);
+Geometry = prepareResponseGeometry(Geometry,Sensor,Response,Environment,Debris,Capability,Shell);
 offsets_min = distributePlanesInLTAN(Orbit.NumPlanes,Orbit.BaselineLTANSpread_min);
 [planeRate_s,Diagnostics] = evaluatePlanes(offsets_min,Geometry,Orbit, ...
     Mission,Sensor,Response,Environment,Debris,Pointing,Exclusion,Numerics,Earth);
+[AltitudeCapability,AltitudeCapabilitySummary] = capabilityTables(Diagnostics,Capability,Orbit);
+if Capability.Enabled
+    disp(AltitudeCapabilitySummary);
+    fprintf('Capability limits are sampled chord-midpoint altitudes, not continuous coverage bounds.\n');
+end
 planeRate_s = planeRate_s*Comms.Availability;
 spacecraftDay = mean(planeRate_s,1)'*secondsPerDay;
 constellationDay = sum(planeRate_s,1)'*Orbit.SpacecraftPerPlane*secondsPerDay;
@@ -346,6 +364,7 @@ if Trade.RunAltitudeTrade
         caseOrbit = buildOrbitAtAltitude(h,Orbit,Earth,tropicalYear_days,secondsPerDay);
         caseGeometry = buildEncounterGeometry(caseOrbit,Shell,Sensor,Pointing, ...
             Debris,Exclusion,Numerics,Earth);
+        caseGeometry = prepareResponseGeometry(caseGeometry,Sensor,Response,Environment,Debris,Capability,Shell);
         rates = evaluatePlanes(offsets_min,caseGeometry,caseOrbit,Mission,Sensor, ...
             Response,Environment,Debris,Pointing,Exclusion,Numerics,Earth);
         daily = sum(rates,1)*Orbit.SpacecraftPerPlane*secondsPerDay*Comms.Availability;
@@ -372,6 +391,27 @@ if Plot.MakeFigures
             'Resolution',Plot.ExportResolution_dpi);
     end
     plotTradeResults(ArchitectureResults,LTANResults,AltitudeResults,runLabel);
+    if Capability.Enabled
+        fc = figure('Color','w','Name','Exact-diameter altitude capability');
+        ax = axes(fc); hold(ax,'on');
+        for d = Capability.Diameters_cm
+            rows = AltitudeCapability.Diameter_cm==d;
+            plot(ax,AltitudeCapability.AltitudeMidpoint_km(rows), ...
+                AltitudeCapability.QualifiedFraction(rows),'LineWidth',1.5, ...
+                'DisplayName',sprintf('%g cm',d));
+        end
+        set(ax,'Color','w','XColor','k','YColor','k','FontSize',12);
+        xlabel(ax,'Debris chord-midpoint altitude (km)','Color','k');
+        ylabel(ax,'Qualified fraction of observable passages','Color','k');
+        title(ax,sprintf('Altitude capability from %g km spacecraft altitude',Orbit.Altitude_km),'Color','k');
+        ylim(ax,[0 1]); xlim(ax,[Shell.MinAltitude_km Shell.MaxAltitude_km]); grid(ax,'on');
+        legend(ax,'show','TextColor','k','Color','w','EdgeColor','k','Location','best');
+        if Plot.SaveFigures
+            if ~isfolder(Plot.OutputFolder), mkdir(Plot.OutputFolder); end
+            exportgraphics(fc,fullfile(Plot.OutputFolder,'altitude_capability.png'), ...
+                'Resolution',Plot.ExportResolution_dpi);
+        end
+    end
 end
 if Output.SaveTables
     if ~isfolder(Output.Folder), mkdir(Output.Folder); end
@@ -379,6 +419,10 @@ if Output.SaveTables
     runFolder = fullfile(Output.Folder,char(datetime('now','Format','yyyyMMdd_HHmmss_SSS')));
     mkdir(runFolder);
     writetable(Results,fullfile(runFolder,'size_bin_passages.csv'));
+    if Capability.Enabled
+        writetable(AltitudeCapability,fullfile(runFolder,'altitude_capability.csv'));
+        writetable(AltitudeCapabilitySummary,fullfile(runFolder,'altitude_capability_summary.csv'));
+    end
     writetable(PopulationSummary,fullfile(runFolder,'imported_population_summary.csv'));
     writetable(Summary,fullfile(runFolder,'summary_passages.csv'));
     writetable(PlaneResults,fullfile(runFolder,'plane_passages.csv'));
@@ -387,7 +431,8 @@ if Output.SaveTables
     if ~isempty(AltitudeResults), writetable(AltitudeResults,fullfile(runFolder,'altitude_trade.csv')); end
     save(fullfile(runFolder,'run_inputs_and_results.mat'),'Mission','Shell','Orbit', ...
         'Sensor','Pointing','Debris','Comms','Exclusion','Numerics','Trade', ...
-        'Results','Summary','PlaneResults','PopulationSummary','Environment','Diagnostics','runLabel');
+        'Results','Summary','PlaneResults','PopulationSummary','Environment','Diagnostics','runLabel', ...
+        'Capability','AltitudeCapability','AltitudeCapabilitySummary');
     fid = fopen(fullfile(runFolder,'RUN_STATUS.txt'),'w');
     assert(fid>=0,'Cannot write run status.');
     fprintf(fid,'%s\nEnvironment mode: %s\nSensor CSV: %s\n',runLabel, ...
@@ -916,21 +961,30 @@ function [mid,L,ray] = observableChords(p,v,b,a,c,Orbit,Shell,Sensor,Exclusion,E
     t0 = bound(:,1:end-1); t1 = bound(:,2:end);
     t = (t0+t1)/2;
     valid = isfinite(t) & t1-t0>1e-10 & t>=-R & t<=R;
+    % Reuse projections for all boundary intervals. Only finite candidate
+    % intervals need testing; no temporary N-by-3 point matrix is built.
+    pb = p*b'; vb = dot(v,b);
+    pa = p*a'; va = dot(v,a); pc = p*c'; vc = dot(v,c);
+    circular = strcmpi(Sensor.FOVShape,'Circular');
+    cosBeta = cosd(Sensor.FOV_deg/2); tanBeta = tand(Sensor.FOV_deg/2);
+    cosLimb = cosd(limb);
     for j = 1:size(t,2)
-        point = p+t(:,j)*v;
-        range = vecnorm(point,2,2);
-        height = vecnorm(point+[Orbit.Radius_km 0 0],2,2)-Earth.Radius_km;
-        along = point*b';
-        if strcmpi(Sensor.FOVShape,'Circular')
-            inFOV = along>=range*cosd(Sensor.FOV_deg/2);
+        rows = find(valid(:,j));
+        if isempty(rows), continue; end
+        tj = t(rows,j);
+        x = p(rows,1)+tj*v(1); y = p(rows,2)+tj*v(2); z = p(rows,3)+tj*v(3);
+        range = sqrt(x.^2+y.^2+z.^2);
+        height = sqrt((x+Orbit.Radius_km).^2+y.^2+z.^2)-Earth.Radius_km;
+        along = pb(rows)+tj*vb;
+        if circular
+            inFOV = along>=range*cosBeta;
         else
-            inFOV = along>=0 & abs(point*a')<=along*tand(Sensor.FOV_deg/2) & ...
-                abs(point*c')<=along*tand(Sensor.FOV_deg/2);
+            inFOV = along>=0 & abs(pa(rows)+tj*va)<=along*tanBeta & ...
+                abs(pc(rows)+tj*vc)<=along*tanBeta;
         end
-        clearEarth = -point(:,1)<range*cosd(limb);
-        valid(:,j) = valid(:,j) & range>0 & range>=Sensor.MinRange_km & ...
-            range<=R & height>=Shell.MinAltitude_km & height<=Shell.MaxAltitude_km & ...
-            inFOV & clearEarth;
+        clearEarth = -x<range*cosLimb;
+        valid(rows,j) = range>0 & range>=Sensor.MinRange_km & range<=R & ...
+            height>=Shell.MinAltitude_km & height<=Shell.MaxAltitude_km & inFOV & clearEarth;
     end
     starts = [valid(:,1),valid(:,2:end)&~valid(:,1:end-1)];
     ends = [valid(:,1:end-1)&~valid(:,2:end),valid(:,end)];
@@ -982,6 +1036,15 @@ function [rates,Diagnostics] = evaluatePlanes(offsets,Geometry,Orbit,Mission,Sen
     rates = zeros(numel(offsets),nBins);
     Diagnostics.MinPhase_deg = NaN; Diagnostics.MaxPhase_deg = NaN;
     phaseMin = Inf; phaseMax = -Inf;
+    collectCapability = nargout>1 && Geometry{1}.CapabilityEnabled;
+    if collectCapability
+        Diagnostics.CapabilityEdges = Geometry{1}.CapabilityEdges;
+        Diagnostics.CapabilityBins = Geometry{1}.CapabilityBins;
+        shape = size(Geometry{1}.CapabilityDenominator);
+        Diagnostics.CapabilityDenominator = zeros(shape);
+        Diagnostics.CapabilityNumerator = zeros(shape);
+        Diagnostics.CapabilityMax = -inf(1,shape(2));
+    end
     nDates = Numerics.MissionDateSamples;
     nOrbit = Numerics.OrbitalPositionSamples;
     beta = Sensor.FOV_deg/2;
@@ -1013,7 +1076,7 @@ function [rates,Diagnostics] = evaluatePlanes(offsets,Geometry,Orbit,Mission,Sen
                 V = G.Values;
                 if isempty(V), continue; end
                 mid = V(:,1:3);
-                range = vecnorm(mid,2,2);
+                range = G.Range;
                 phase = [];
                 if Sensor.UsePhaseAngleCSV || Sensor.ReportPhaseDiagnostic
                     % Angle at debris: direction toward sensor is -mid; Sun
@@ -1021,21 +1084,29 @@ function [rates,Diagnostics] = evaluatePlanes(offsets,Geometry,Orbit,Mission,Sen
                     phase = acosd(max(-1,min(1,(-mid*sunRTN')./range)));
                     phaseMin = min(phaseMin,min(phase)); phaseMax = max(phaseMax,max(phase));
                 end
-                for bin = 1:nBins
-                    diameter = Debris.RepresentativeDiameter_cm(bin)*ones(size(range));
-                    density = queryDensity(Environment,bin,V(:,6));
+                if ~Sensor.UsePhaseAngleCSV
+                    rates(plane,:) = rates(plane,:)+G.FixedRates/(nDates*nOrbit);
+                else
+                    for bin = 1:nBins
+                        needed = Response.Time(range,Debris.RepresentativeDiameter_cm(bin)*ones(size(range)),phase);
+                        weight = G.RateWeights(:,bin);
+                        assert(~any(~isfinite(needed) & weight>0),'Sensor CSV coverage missing; no extrapolation.');
+                        accepted = V(:,4)>=needed & isfinite(needed);
+                        rates(plane,bin) = rates(plane,bin)+sum(weight(accepted))/(nDates*nOrbit);
+                    end
+                end
+                if collectCapability
                     if Sensor.UsePhaseAngleCSV
-                        needed = Response.Time(range,diameter,phase);
+                        [num,mx] = capabilityAccepted(G,Response,phase);
                     else
-                        needed = Response.Time(range,diameter);
+                        num = G.CapabilityNumerator; mx = G.CapabilityMax;
                     end
-                    if any(~isfinite(needed) & density>0)
-                        error(['Sensor CSV coverage missing at a sampled range/diameter/phase. ' ...
-                            'No extrapolation was performed. Supply a wider response table.']);
-                    end
-                    qualified = V(:,4)>=needed & isfinite(needed);
-                    rates(plane,bin) = rates(plane,bin)+ ...
-                        sum(density(qualified).*V(qualified,5))/(nDates*nOrbit);
+                    % Equal date/orbit/plane weighting. Common normalization
+                    % cancels in the fraction; comms and satellite count also
+                    % cancel. Sun-blocked samples contribute neither term.
+                    Diagnostics.CapabilityDenominator = Diagnostics.CapabilityDenominator+G.CapabilityDenominator;
+                    Diagnostics.CapabilityNumerator = Diagnostics.CapabilityNumerator+num;
+                    Diagnostics.CapabilityMax = max(Diagnostics.CapabilityMax,mx);
                 end
             end
         end
@@ -1076,28 +1147,67 @@ function offsets = distributePlanesInLTAN(numPlanes,totalSpread_min)
 end
 
 function plotTradeResults(Architecture,LTAN,Altitude,runLabel)
-    if ~isempty(Architecture)
-        figure('Color','w','Name','Architecture trade');
-        p = unique(Architecture.Planes); n = unique(Architecture.SpacecraftPerPlane);
-        Z = reshape(Architecture.TotalPerDay,numel(n),numel(p));
-        imagesc(p,n,Z); axis xy; colorbar;
-        xlabel('Orbital planes'); ylabel('Spacecraft per plane');
-        title({'Constellation qualified passages / day',char(runLabel)});
-    end
-    if ~isempty(LTAN)
-        figure('Color','w','Name','LTAN trade');
-        plot(LTAN.LTANSpread_min,[LTAN.SciencePerDay LTAN.OutsidePerDay],'LineWidth',1.5);
-        xlabel('Total LTAN spread (min)'); ylabel('Constellation passages / day');
-        legend('Science sizes','Outside science sizes'); grid on;
-        title(char(runLabel));
-    end
-    if ~isempty(Altitude)
-        figure('Color','w','Name','Altitude trade');
-        plot(Altitude.Altitude_km,[Altitude.SciencePerDay Altitude.OutsidePerDay],'LineWidth',1.5);
-        xlabel('Spacecraft altitude (km)'); ylabel('Constellation passages / day');
-        legend('Science sizes','Outside science sizes'); grid on;
-        title(char(runLabel));
-    end
+
+if ~isempty(Architecture)
+    figure('Color','w','Name','Architecture trade');
+
+    p = unique(Architecture.Planes);
+    n = unique(Architecture.SpacecraftPerPlane);
+    Z = reshape(Architecture.TotalPerDay,numel(n),numel(p));
+
+    imagesc(p,n,Z);
+    axis xy;
+
+    ax = gca;
+    set(ax,'Color','w','XColor','k','YColor','k','FontSize',12);
+
+    cb = colorbar;
+    cb.Color = 'k';
+    cb.FontSize = 12;
+
+    xlabel('Orbital planes','Color','k');
+    ylabel('Spacecraft per plane','Color','k');
+    title({'Constellation qualified passages / day',char(runLabel)}, ...
+        'Color','k','FontSize',14);
+end
+
+if ~isempty(LTAN)
+    figure('Color','w','Name','LTAN trade');
+
+    plot(LTAN.LTANSpread_min, ...
+        [LTAN.SciencePerDay LTAN.OutsidePerDay],'LineWidth',1.5);
+
+    ax = gca;
+    set(ax,'Color','w','XColor','k','YColor','k','FontSize',12);
+    grid on;
+
+    xlabel('Total LTAN spread (min)','Color','k');
+    ylabel('Constellation passages / day','Color','k');
+    title(char(runLabel),'Color','k','FontSize',14);
+
+    legend('Science sizes','Outside science sizes', ...
+        'TextColor','k','Color','w','EdgeColor','k', ...
+        'FontSize',12,'Location','best');
+end
+
+if ~isempty(Altitude)
+    figure('Color','w','Name','Altitude trade');
+
+    plot(Altitude.Altitude_km, ...
+        [Altitude.SciencePerDay Altitude.OutsidePerDay],'LineWidth',1.5);
+
+    ax = gca;
+    set(ax,'Color','w','XColor','k','YColor','k','FontSize',12);
+    grid on;
+
+    xlabel('Spacecraft altitude (km)','Color','k');
+    ylabel('Constellation passages / day','Color','k');
+    title(char(runLabel),'Color','k','FontSize',14);
+
+    legend('Science sizes','Outside science sizes', ...
+        'TextColor','k','Color','w','EdgeColor','k', ...
+        'FontSize',12,'Location','best');
+end
 end
 
 function runGeometrySelfChecks
@@ -1127,4 +1237,100 @@ function runGeometrySelfChecks
     [~,L,~] = observableChords(p,[0 1 0],b,a,c,Orbit,Shell,Sensor,Exclusion,Earth);
     assert(isempty(L),'Earth-background exclusion self-check failed.');
     fprintf('Geometry self-checks passed.\n');
+end
+
+
+function Geometry = prepareResponseGeometry(Geometry,Sensor,Response,Environment,Debris,Capability,Shell)
+% Cache density and fixed-phase qualification ONCE per pointing geometry.
+% Reused by dates, orbital positions, planes and architecture/LTAN trades.
+    validateattributes(Capability.AltitudeStep_km,{'numeric'},{'scalar','finite','positive'});
+    edges = Shell.MinAltitude_km:Capability.AltitudeStep_km:Shell.MaxAltitude_km;
+    if edges(end)<Shell.MaxAltitude_km, edges(end+1)=Shell.MaxAltitude_km; end
+    nH = numel(edges)-1; ds = Capability.Diameters_cm;
+    bins = zeros(1,numel(ds));
+    if Capability.Enabled
+        assert(all(isfinite(ds) & ds>=min(Response.Diameter_cm) & ds<=max(Response.Diameter_cm)), ...
+            'Capability diameters must be within sensor CSV coverage.');
+        for d = 1:numel(ds)
+            k = find(ds(d)>=Debris.SizeBins_cm(:,1) & ds(d)<=Debris.SizeBins_cm(:,2),1,'first');
+            assert(~isempty(k),'Capability diameter must belong to a configured population bin.');
+            bins(d)=k;
+        end
+    end
+    for g = 1:numel(Geometry)
+        G = Geometry{g}; V=G.Values; G.Range=vecnorm(V(:,1:3),2,2);
+        nb = size(Debris.SizeBins_cm,1);
+        W = zeros(size(V,1),nb); G.FixedRates=zeros(1,nb);
+        for b = 1:nb
+            W(:,b) = queryDensity(Environment,b,V(:,6)).*V(:,5);
+            if ~Sensor.UsePhaseAngleCSV && ~isempty(V)
+                need = Response.Time(G.Range,Debris.RepresentativeDiameter_cm(b)*ones(size(G.Range)));
+                assert(~any(~isfinite(need) & W(:,b)>0),'Sensor CSV coverage missing; no extrapolation.');
+                ok = V(:,4)>=need & isfinite(need);
+                G.FixedRates(b)=sum(W(ok,b));
+            end
+        end
+        G.CapabilityEnabled = Capability.Enabled;
+        G.CapabilityEdges = edges; G.CapabilityBins = bins;
+        G.CapabilityDiameters = ds;
+        G.CapabilityDenominator=zeros(nH,numel(ds));
+        G.CapabilityNumerator=zeros(nH,numel(ds));
+        G.CapabilityMax=-inf(1,numel(ds));
+        if Capability.Enabled
+            G.CapabilityWeights=W(:,bins);
+            G.CapabilityAltitudeIndex=discretize(V(:,6),edges);
+            for d=1:numel(ds)
+                G.CapabilityDenominator(:,d)=accumarray(G.CapabilityAltitudeIndex,G.CapabilityWeights(:,d),[nH 1],@sum,0);
+            end
+            if ~Sensor.UsePhaseAngleCSV
+                [G.CapabilityNumerator,G.CapabilityMax]=capabilityAccepted(G,Response,[]);
+                % Fixed response needs only compact altitude summaries later.
+                G=rmfield(G,{'CapabilityWeights','CapabilityAltitudeIndex'});
+            end
+        end
+        if Sensor.UsePhaseAngleCSV, G.RateWeights=W; end
+        Geometry{g}=G;
+    end
+end
+
+function [numerator,highest] = capabilityAccepted(G,Response,phase)
+% Apply EXACT diagnostic diameters, independently of rate-bin representatives.
+    numerator=zeros(size(G.CapabilityDenominator));
+    highest=-inf(1,numel(G.CapabilityDiameters));
+    V=G.Values;
+    if isempty(V), return; end
+    for d=1:numel(G.CapabilityDiameters)
+        diameter=G.CapabilityDiameters(d)*ones(size(G.Range));
+        if isempty(phase), need=Response.Time(G.Range,diameter);
+        else, need=Response.Time(G.Range,diameter,phase); end
+        weight=G.CapabilityWeights(:,d);
+        assert(~any(~isfinite(need) & weight>0),'Capability CSV coverage missing; no extrapolation.');
+        ok=V(:,4)>=need & isfinite(need) & weight>0;
+        numerator(:,d)=accumarray(G.CapabilityAltitudeIndex(ok),weight(ok),[size(numerator,1) 1],@sum,0);
+        if any(ok), highest(d)=max(V(ok,6)); end
+    end
+end
+
+function [profile,summary] = capabilityTables(Diagnostics,Capability,Orbit)
+% NaN = no observable weight, 0 = observed geometric passages but none qualify.
+    profile=table; summary=table;
+    if ~Capability.Enabled, return; end
+    edges=Diagnostics.CapabilityEdges(:); nH=numel(edges)-1;
+    ds=Capability.Diameters_cm(:); nd=numel(ds);
+    den=Diagnostics.CapabilityDenominator; num=Diagnostics.CapabilityNumerator;
+    fraction=nan(size(den)); valid=den>0; fraction(valid)=num(valid)./den(valid);
+    profile=table(repelem(ds,nH),repmat(edges(1:end-1),nd,1),repmat(edges(2:end),nd,1), ...
+        repmat((edges(1:end-1)+edges(2:end))/2,nd,1),fraction(:),den(:)>0,num(:)>0, ...
+        'VariableNames',{'Diameter_cm','AltitudeLower_km','AltitudeUpper_km', ...
+        'AltitudeMidpoint_km','QualifiedFraction','HasObservablePassages','HasQualifiedPassages'});
+    highest=Diagnostics.CapabilityMax(:); found=isfinite(highest); highest(~found)=NaN;
+    lower=nan(nd,1); upper=lower;
+    for d=1:nd
+        if found(d)
+            k=discretize(highest(d),edges); lower(d)=edges(k); upper(d)=edges(k+1);
+        end
+    end
+    summary=table(ds,repmat(Orbit.Altitude_km,nd,1),Diagnostics.CapabilityBins(:),found,highest,lower,upper, ...
+        'VariableNames',{'Diameter_cm','SpacecraftAltitude_km','DensityBinIndex','AnyQualifiedPassage', ...
+        'MaxQualifiedMidpointAltitude_km','HighestIntervalLower_km','HighestIntervalUpper_km'});
 end
