@@ -17,7 +17,7 @@ if cfg.use.J2
 end
 
 if cfg.use.drag
-    a = a + accelDrag(r, v, cfg);
+    a = a + accelDrag(t, r, v, cfg);
 end
 
 dxdt = [v; a];
@@ -49,21 +49,22 @@ aJ2 = k * [ x * (1 - 5*zr2)
 end
 
 
-function aD = accelDrag(r, v, cfg)
-% accelDrag: perturbing acceleration from drag in a J77 atmosphere rotating with the Earth.
+function aD = accelDrag(t, r, v, cfg)
+% accelDrag: perturbing acceleration from drag in an atmosphere rotating with the Earth, density from dragDensity.m.
+% t: time elapsed [s]
 % r: position vector in ECI [km]
 % v: velocity vector in ECI [km/s]
-% cfg: parameter struct from config.m, with cfg.drag.logRho set by propagate.m
+% cfg: parameter struct from config.m, with cfg.drag.logRho set by propagate.m for J77
 % aD: drag acceleration in ECI [km/s^2]
 
-rn = norm(r); % rn: orbital radius [km]
-
-% Height above the WGS84 ellipsoid, first order in flattening:
-h = rn - cfg.Re * (1 - cfg.f * (r(3)/rn)^2); % h: height above the ellipsoid [km]
-
-rho = exp(cfg.drag.logRho(h)); % rho: J77 mass density [kg/m^3]
+rho = dragDensity(t, r, cfg); % rho: mass density [kg/m^3]
 
 if isnan(rho)
+    rn = norm(r); % rn: orbital radius [km]
+
+    % Height above the WGS84 ellipsoid, first order in flattening:
+    h = rn - cfg.Re * (1 - cfg.f * (r(3)/rn)^2); % h: height above the ellipsoid [km]
+
     error('eom:dragHeight', 'height %.1f km is outside the J77 density table', h);
 end
 
