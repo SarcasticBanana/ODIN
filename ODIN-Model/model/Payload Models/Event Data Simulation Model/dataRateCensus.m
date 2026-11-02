@@ -1,0 +1,90 @@
+clear; clc; close all;
+
+nx = 2560;
+ny = 2560;
+N = 20;
+% odd indices are x=0, y=any (with pos x vel)
+% even indices are x=any, y=0 (with pos y vel)
+% x0s = round(linspace(0,nx,N));
+x0s = round(rand(1,N)*nx);
+x0s(1:2:end) = 0;
+% y0s = round(linspace(0,ny,N));
+y0s = round(rand(1,N)*ny);
+y0s(2:2:end) = 0;
+vMax = 2e3;
+vxs = rand(1,N)*vMax;
+vxs(2:2:end) = vxs(2:2:end).*(round(rand(1,N/2))*2-1);
+vys = rand(1,N)*vMax;
+vys(1:2:end) = vys(1:2:end).*(round(rand(1,N/2))*2-1);
+
+ts = min(abs((nx.*(vxs>0)-x0s)./vxs),abs((ny.*(vys>0)-y0s)./vys));
+tfilter = ts<0.5 | ts>20;
+x0s(tfilter) = [];
+y0s(tfilter) = [];
+vxs(tfilter) = [];
+vys(tfilter) = [];
+N = nnz(~(tfilter));
+disp(['Proceeding with ', num2str(N), ' long-enough points']);
+
+figure; quiver(x0s,y0s,vxs,vys);
+xline([0,nx]);
+yline([0,nx]);
+%%
+for i=1:N
+    [events] = eventDataStreamFun(x0s(i),y0s(i),vxs(i),vys(i));
+end
+%%
+filelist = dir("census/*.txt");
+Npost = length(filelist);
+
+for i=1:Npost
+    dataRate(i) = txt2binCalc(['census/',filelist(i).name]);
+    regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+).txt",'tokens');
+    x0post(i) = str2double(regex{1}{1});
+    y0post(i) = str2double(regex{1}{2});
+    vxpost(i) = str2double(regex{1}{3});
+    vypost(i) = str2double(regex{1}{4});
+end
+%%
+figure;
+quiver(x0s,y0s,vxs,vys);
+grid on;
+xline([0,nx])
+yline([0,nx])
+
+figure;
+histogram(vecnorm([vxpost;vypost]),round(Npost/4));
+xlabel("Magnitude of Velocity");
+
+figure;
+histogram(dataRate,round(Npost/4));
+xlabel('Data Rate (Mbps)');
+
+figure;
+scatter(vecnorm([vxpost;vypost]),dataRate/1e6);
+grid on;
+xlabel('Magnitude of Velocity');
+ylabel('Data Rate (Mbps)');
+
+%% EVT 3.0 16-bit word encoding
+function bps = txt2binCalc(filename)
+    rawData = readmatrix(filename);
+    % N = length(rawData);
+    xs = rawData(:,1);
+    ys = rawData(:,2);
+    % pols = rawData(:,3);
+    times = rawData(:,4);
+    clear rawData;
+    
+    nBitsTime = 32*numel(unique(times));
+    
+    reprepYs = numel(find(ys==circshift(ys,1) & ys==circshift(ys,2)));
+    repYs = numel(find(ys==circshift(ys,1))) - reprepYs*2;
+    uniqueYs = numel(ys)-repYs;
+    nBitsY = 16*(uniqueYs - repYs - 2*reprepYs);
+    nBitsX = 16*(numel(xs));
+    
+    nBitsTot = nBitsTime + nBitsY + nBitsX;
+    bps = nBitsTot/(times(end)/1e6);
+    disp(['Output: ', num2str(bps/1e6), ' Mbps']);
+end

@@ -1,7 +1,7 @@
 %% Custom 64-bit word 
 clear; clc; close all;
 
-rawData = readmatrix("synthetic_debris_events.txt");
+rawData = readmatrix("synthetic_debris_events_detection.txt");
 N = length(rawData);
 nBits = N*64;
 tTot = rawData(end,4)/1e6;

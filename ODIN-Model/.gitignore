@@ -1,0 +1,16 @@
+# MATLAB autosave files
+*.asv
+/model/Payload Models/Event Data Simulation Model/census
+
+# Windows folder settings
+desktop.ini
+
+# Large validation outputs, kept local
+validation/results/*.mat
+validation/results/SW-All.csv
+
+# Saved MATLAB workspace, kept local
+demos/matlab_workspace.mat
+
+# RUN outputs, kept local
+/results/
