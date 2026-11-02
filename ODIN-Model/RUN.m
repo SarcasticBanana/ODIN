@@ -1,4 +1,4 @@
-% RUN: the ODIN constellation over nDay days, orbit, shadow, array power, ground track and downlink figures, the contact table, downlink times in seconds, then the 3D viewer.
+% RUN: the ODIN constellation over nDay days, orbit, shadow, array power, battery and operating mode, observation slew, ground track and downlink figures, the contact table, downlink times in seconds, then the 3D viewer.
 
 clear; close all; clc;
 
@@ -10,6 +10,8 @@ nDay = 7; % nDay: run length [days]
 nView = 24; % nView: 3D viewer scenario length [h]
 nOrbP = 10; % nOrbP: orbits of ODIN 1.1 given to arrayPower
 capMin = 120; % capMin: downlink time per satellite per day in the battery trade [min]
+slewMin = [30 45 60]; % slewMin: observation window lengths [min]
+tiltMax = 90; % tiltMax: worst-case window tilt from the Sun, ADCS [deg]
 outDir = fullfile(here, 'results'); % outDir: folder for the contact table
 if ~isfolder(outDir)
     mkdir(outDir);
@@ -162,6 +164,64 @@ if base.use.eclipse
     % ar: area study and incidence sweep at cfg.power.panelArea from arrayPower.m
     fprintf('array at %g m^2, %d orbits of %s, normal Sun: peak %.2f W, window average %.2f W at the bus, ageing allowance included\n', ...
             base.power.panelArea, nOrbP, names{1}, ar.summary.PeakPlanning_W, ar.summary.WindowAvgPlanning_W);
+
+    pm = powerModes(out{1}, cfgs(1)); % pm: battery charge and operating mode of ODIN 1.1 pointing at the Sun
+
+    cW = base; % cW: battery sizing orbit, cfg.batt.h with the Sun in the orbit plane
+    cW.h = base.batt.h;
+
+    % Noon ascending node, RAAN at the mean Sun right ascension at sim start as in tradeLighting.m:
+    cW.raan0 = mod(280.460 + 36000.771*(jd0 - 2451545.0)/36525, 360);
+
+    % Kepler's third law:
+    TW = 2*pi*sqrt((cW.Re + cW.h)^3/cW.mu); % TW: period of the battery sizing orbit [s]
+
+    outW = propagate(cW, (nDay*86400 + 1)/TW); % outW: state history of the battery sizing orbit
+    pmW = powerModes(outW, cW); % pmW: battery charge and operating mode in the battery sizing orbit pointing at the Sun
+
+    tilts = [base.slew.tilt, tiltMax]; % tilts: window tilts from the Sun [deg]
+    fr = {slewFrequency(out{1}, cfgs(1), slewMin, tilts), slewFrequency(outW, cW, slewMin, tilts)};
+    % fr: slewFrequency results of ODIN 1.1 and of the battery sizing orbit
+    frName = {names{1}, sprintf('%g km, Sun in plane', cW.h)}; % frName: label of each orbit
+
+    fprintf('\npointing at the Sun, loads %g, %g and %g W in Nominal, Raven and Safe:\n', base.modes.pNominal, base.modes.pRaven, base.modes.pSafe);
+    fprintf('  %-20s lowest charge %5.1f%%, hours in Nominal, Raven, Safe %s\n', frName{1}, 100*min(pm.soc), mat2str(round(pm.tMode/360)/10));
+    fprintf('  %-20s lowest charge %5.1f%%, hours in Nominal, Raven, Safe %s\n', frName{2}, 100*min(pmW.soc), mat2str(round(pmW.tMode/360)/10));
+
+    fprintf('\nobservation windows, each started once the battery is back at the top of charge in Nominal, then full Sun:\n');
+    fprintf('%-20s %6s %7s %8s %10s %10s %9s %8s %5s\n', 'orbit', 'tilt', 'window', 'windows', 'recovery', 'recovery', 'not back', 'lowest', 'cut');
+    fprintf('%-20s %6s %7s %8s %10s %10s %9s %8s %5s\n', '', '[deg]', '[min]', 'per day', 'median', 'longest', 'by end', 'charge', 'short');
+    for o = 1:2
+        for i = 1:numel(tilts)
+            for j = 1:numel(slewMin)
+                f = fr{o}(i, j); % f: one case of slewFrequency
+                fprintf('%-20s %6.1f %7d %8.2f %10.1f %10.1f %9d %7.1f%% %5d\n', frName{o}, f.tilt, f.D, f.perDay, ...
+                        median(f.rec(~isnan(f.rec)))/60, max([f.rec, NaN])/60, nnz(isnan(f.rec)), 100*f.socMin, nnz(f.cut));
+            end
+        end
+    end
+
+    figure('Color', 'w', 'Name', 'Power modes', 'Position', [140 60 1000 700]);
+    thr = 100*[base.modes.socNominal, base.modes.socRaven, base.modes.socSafe]; % thr: mode thresholds [%]
+    ax = subplot(2, 1, 1);
+    hold(ax, 'on'); grid(ax, 'on');
+    plot(ax, ps.t, 100*pm.soc, 'Color', c(1,:), 'LineWidth', 1.2);
+    plot(ax, ps.t, 100*pmW.soc, 'Color', [0.35 0.35 0.35], 'LineWidth', 1.2);
+    plot(ax, ps.t([1 end]), [thr; thr], 'k--');
+    ylim(ax, [0 100]);
+    ylabel(ax, 'battery charge [%]');
+    title(ax, sprintf('pointing at the Sun, %s, dashed: Raven below %g%%, Safe below %g%%, Nominal again above %g%%', tag, thr(2), thr(3), thr(1)));
+    legend(ax, frName, 'Location', 'southwest');
+
+    ax = subplot(2, 1, 2);
+    hold(ax, 'on'); grid(ax, 'on');
+    plot(ax, ps.t, 100*fr{1}(1, end).soc, 'Color', c(1,:), 'LineWidth', 1.2);
+    plot(ax, ps.t, 100*fr{2}(1, end).soc, 'Color', [0.35 0.35 0.35], 'LineWidth', 1.2);
+    plot(ax, ps.t([1 end]), [thr; thr], 'k--');
+    ylim(ax, [0 100]);
+    ylabel(ax, 'battery charge [%]'); xlabel(ax, sprintf('time [%s]', ps.tName));
+    title(ax, sprintf('%g min windows at %g deg from the Sun, each once the battery is full again', slewMin(end), tilts(1)));
+    legend(ax, frName, 'Location', 'southwest');
 end
 
 figure('Color', 'w', 'Name', 'Ground track', 'Position', [100 60 1100 620]);

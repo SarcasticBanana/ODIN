@@ -23,7 +23,7 @@ p.incidenceSummaryAngles_deg = 0:15:90;
 
 %% Electrical assumptions
 % The default area study retains the electrical factors and normal Sun pointing.
-% Planning output retains the same 10% allowance, with no assigned mission life.
+% Planning output applies the end-of-life factors in the Power section of assumptions.xlsx.
 % Loads, battery behavior and EPS capacity limits are still excluded.
 p.cellEfficiency = 0.30;
 p.cellCoverage = 0.80;
@@ -36,7 +36,8 @@ p.opticalRetained = 0.97;
 p.wiringDiodeRetained = 0.97;
 p.mpptEfficiency = 0.98;
 p.converterEfficiency = 0.95;
-p.agingRetained = 0.90;
+p.agingRetained = cfg.power.eolRadiation * cfg.power.eolUV * cfg.power.eolDebris * ...
+    cfg.power.eolThermalCycling * cfg.power.eolContamination; % end-of-life array factor
 
 %% Thermal assumptions
 % One uniform plate temperature; only the illuminated front face can radiate.
@@ -619,12 +620,24 @@ end
 % https://www.mathworks.com/help/matlab/ref/nargin.html
 % https://www.mathworks.com/help/matlab/ref/validateattributes.html
 
+%% End-of-life references
+% [EOL1] Azur Space. "3G30-Advanced (HP) Triple-Junction Solar Cell." Data sheet DB 00010894-02, Mar 2026.
+% Remaining factor of Pmp after 1 MeV electrons: 0.963 at 5e13 and 0.945 at 2.5e14 e/cm^2.
+% https://www.azurspace.com/media/uploads/file_links/file/bdb_00010894-02-00_3g30-advanced_hp.pdf
+%
+% [EOL2] Smith, B. K., and Brisco, H. (1993). "Solar Array Electrical Performance Assessment
+% for Space Station Freedom." NASA TM-106161. UV 0.995 and debris 0.999; thermal cycling and
+% contamination are given at 4 and 10 years and taken at five years as 0.999 and 0.994.
+% https://ntrs.nasa.gov/api/citations/19930017850/downloads/19930017850.pdf
+
 %% Project electrical assumptions
 % Retained design estimates: cellEfficiency=0.30, cellCoverage=0.80, selfShadowRetained=1.00;
 % mismatch=0.98, optical=0.97, wiring/diode=0.97, MPPT=0.98 and converter=0.95.
 % These factors have no verified assembly-specific source or published average in this model.
 %
-% agingRetained=0.90 is a planning allowance without a mission duration or radiation fluence.
+% agingRetained is the product of the end-of-life factors in the Power section of assumptions.xlsx:
+% radiation [EOL1], UV, debris, thermal cycling and contamination [EOL2], all five-year values.
+% The sheet holds the pessimistic set (product 0.8895); its notes give the nominal set (0.9505).
 % It scales the BOL power result; it does not model a separately aged thermal state.
 
 %% Project thermal and pointing assumptions

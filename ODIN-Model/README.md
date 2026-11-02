@@ -17,6 +17,7 @@ cfg = config(); % cfg: inputs from assumptions.xlsx
 out = propagate(cfg, 15); % out: state history over 15 orbits
 S = solarFlux(out, cfg); % S: irradiance at the spacecraft [W/m^2]
 ecl = eclipseTimes(out, cfg); % ecl: umbra and penumbra entry and exit times [s]
+b = batteryAging(cfg); % b: battery capacity, resistance and lowest charge, day by day over cfg.power.years
 ```
 
 - `config('myCase.xlsx')` runs off your own copy of the sheet instead
@@ -24,10 +25,14 @@ ecl = eclipseTimes(out, cfg); % ecl: umbra and penumbra entry and exit times [s]
 - drag is off by default, turn it on with `cfg.use.drag` in the sheet
 - `constellation(cfg)` gives one cfg per satellite plus names, plane by plane, from the Constellation section of the sheet
 - main_demo runs arrayPower at the panel area `cfg.power.panelArea`, Power section of the sheet
+- arrayPower's aging factor is the product of the five end-of-life factors in the Power section, pessimistic set by default (0.8895), nominal set in the notes (0.9505)
+- batteryAging runs off the Battery section, one 35.8 min shadow every orbit at 550 km by default, `plot(b.t/365.25, b.socMin)` for the lowest charge against years
 - `scenarioDemo([], [], 24*7, [], true)`: a week instead of the default day, plus each satellite's previous and next orbit as ground tracks (off by default)
-- `RUN`: all satellites over a week, orbit, shadow, array power, ground track and downlink figures, every contact window to the millisecond in `results/contacts.csv`, then the 3D viewer, run length and viewer length at the top
+- `RUN`: all satellites over a week, orbit, shadow, array power, battery and operating mode, observation slew, ground track and downlink figures, every contact window to the millisecond in `results/contacts.csv`, then the 3D viewer, run length and viewer length at the top
 - ground stations: Stations sheet of `assumptions.xlsx`, one row per station, Use set to FALSE leaves one out, `contactTimes(out, cfg, st(1))` gives one station's windows from `st = stations()`
 - `dl = downlinkTimes(out, cfg)`: downlink start and end times in seconds from sim start, one row per window, any station, RUN leaves one per satellite in `dl{j}`
+- `pm = powerModes(out, cfg)`: battery charge and operating mode through a run, starting full in Nominal, loads and thresholds in the Operating modes section, `pm.mode` 1 Nominal, 2 Raven, 3 Safe, a panel tilt history as third input
+- `fr = slewFrequency(out, cfg, [30 45 60], [63.3 90])`: observation windows tilted from the Sun, each started once the battery is full again, windows per day, recovery times and lowest charge per tilt and length, RUN prints them for ODIN 1.1 and the 550 km battery sizing orbit
 - use `eclipseTimes` for eclipse lengths, the 60 s output grid overstates each one by about a minute
 - after changing the model run `dragCheck(30)`, takes about a minute, should end with `checks passed: 6 of 6` (5 of 6 without `numericalCrossCheck_365d.mat`, not on GitHub as it's too big)
 
@@ -35,12 +40,12 @@ Needs MATLAB R2019a or newer. Demos and checks need the Aerospace Toolbox.
 
 ## Where everything is
 
-- `assumptions.xlsx`: all inputs (Inputs sheet), ground stations (Stations sheet), drag assumptions, check results, sources
+- `assumptions.xlsx`: all inputs (Inputs sheet), ground stations (Stations sheet), drag and power assumptions, check results, sources
 - `odinPath.m`: path setup
 - `RUN.m`: one run of everything, contact table in `results/` (kept local)
 - `model/`: the model itself (config, propagate, eom (gravity, J2, drag), oe2rv, sunVector, shadow, shadowGeometry, eclipseTimes, solarFlux, dragTable, gcrfRotation, odinToScenario, constellation, stations, earthRotation, stationVector, contactTimes, downlinkTimes)
 - `demos/`: main_demo, scenarioDemo (3D viewer), runSatViewer (one day with the stations in the Stations sheet), plotScale
-- `power/`: arrayPower, array sizing and incidence sweeps
+- `power/`: arrayPower, array sizing and incidence sweeps, batteryAging, battery capacity fade and resistance growth over the mission (NREL BLAST-Lite cell models), powerModes and modeStep, battery charge and operating mode, slewFrequency, observation windows the battery can afford, panelStep, arrayPower's plate and cell equations one step at a time (change both together)
 - `studies/orbitTrade/`: pre-DR1 orbit trade (cases A to F), still used as test orbits by the checks
 - `validation/`: checks against independent references, logs and plots in `validation/results` (.mat files stay local, too big)
 - `external/j77/`: Jacchia 1977 atmosphere code, third party, licence in `license.txt`
