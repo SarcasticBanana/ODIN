@@ -33,11 +33,20 @@ for i=1:N
     [events] = eventDataStreamFun(x0s(i),y0s(i),vxs(i),vys(i));
 end
 %%
-filelist = dir("census/*.txt");
+filelist = dir("model/Payload Models/Event Data Simulation Model/census/*.txt");
 Npost = length(filelist);
+dataRate = zeros(1,Npost);
+detectable = zeros(1,Npost);
+x0post = zeros(1,Npost);
+y0post = zeros(1,Npost);
+vxpost = zeros(1,Npost);
+vypost = zeros(1,Npost);
 
 for i=1:Npost
-    dataRate(i) = txt2binCalc(['census/',filelist(i).name]);
+    filepath = [filelist(i).folder,'\',filelist(i).name];
+    dataRate(i) = txt2binCalc(filepath);
+    detectable(i) = AngularRateFun(filepath);
+
     regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+).txt",'tokens');
     x0post(i) = str2double(regex{1}{1});
     y0post(i) = str2double(regex{1}{2});
@@ -45,6 +54,8 @@ for i=1:Npost
     vypost(i) = str2double(regex{1}{4});
 end
 tspost = min(abs((nx.*(vxpost>0)-x0post)./vxpost),abs((ny.*(vypost>0)-y0post)./vypost));
+
+save model\'Payload Models'\'Event Data Simulation Model'\eventSamples.mat Npost x0post y0post vxpost vypost dataRate detectable tspost
 %%
 figure;
 quiver(x0post,y0post,vxpost,vypost);
@@ -60,15 +71,20 @@ figure;
 histogram(dataRate/1e6,round(Npost/4));
 xlabel('Data Rate (Mbps)');
 
-figure;
-scatter(vecnorm([vxpost;vypost]),dataRate/1e6);
+detectLog = logical(detectable);
+figure; hold on;
+scatter(vecnorm([vxpost(detectLog);vypost(detectLog)]),dataRate(detectLog)/1e6,'b');
+scatter(vecnorm([vxpost(~detectLog);vypost(~detectLog)]),dataRate(~detectLog)/1e6,'r');
 grid on;
+legend("Detectable","Not Detectable");
 xlabel('Magnitude of Velocity (px/s)');
 ylabel('Data Rate (Mbps)');
 
-figure;
-scatter(tspost,dataRate/1e6);
+figure; hold on;
+scatter(tspost(detectLog),dataRate(detectLog)/1e6,'b');
+scatter(tspost(~detectLog),dataRate(~detectLog)/1e6,'r');
 grid on;
+legend("Detectable","Not Detectable");
 xlabel('Time in FOV (s)');
 ylabel('Data Rate (Mbps)');
 
