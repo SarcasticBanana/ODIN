@@ -68,8 +68,8 @@ Orbit.Altitude_km = 600;
 Orbit.Type = "SSO";                    % "SSO" or "Circular"
 Orbit.Inclination_deg = 97.36;         % Used only for "Circular"
 Orbit.NominalLTAN_hr = 18;
-Orbit.NumPlanes = 3;
-Orbit.SpacecraftPerPlane = 9;
+Orbit.NumPlanes = 1;
+Orbit.SpacecraftPerPlane = 6;
 Orbit.BaselineLTANSpread_min = 15;
 
 % ---------------- Sensor Geometry / Response ----------------
@@ -90,7 +90,7 @@ Sensor.ReportPhaseDiagnostic = false;
 % "Zenith" -> +R, "AlongTrack" -> +T, "Normal+" -> +N,
 % "Normal-" -> -N, or "CustomRTN" -> normalized [R T N].
 Pointing.Mode = "CustomRTN";
-Pointing.CustomRTN = [sind(66) 0 cosd(66)];
+Pointing.CustomRTN = [sind(60) 0 cosd(60)];
 % 66 deg FROM orbit normal TOWARD zenith. RTN direction is not phase angle.
 % Choose the N sign opposite the Sun at each representative geometry. The R
 % and T components are unchanged. This does not guarantee Sun clearance.
@@ -147,14 +147,14 @@ Exclusion.EarthLimbClearance_deg = 0.05;
 % a circumscribed cone is used (conservative at the corners).
 
 % ---------------- Architecture Trades ----------------
-Trade.RunArchitectureTrade = false;  % Enable once baseline inputs are checked
+Trade.RunArchitectureTrade = true;  % Enable once baseline inputs are checked
 Trade.NumPlanes = 1:6;
 Trade.SpacecraftPerPlane = 1:9;
 Trade.ArchitectureLTANSpread_min = 60;
 Trade.RunLTANTrade = false;
 Trade.LTANSpread_min = 0:10:180;
-Trade.RunAltitudeTrade = false;
-Trade.SpacecraftAltitude_km = 570:10:700;
+Trade.RunAltitudeTrade = true;
+Trade.SpacecraftAltitude_km = 575:25:700;
 % Optional trades retain V2.3's intent, but no unique/repeat-object plots.
 
 % ---------------- Numerical Settings ----------------
@@ -165,7 +165,7 @@ Numerics.VelocityAltitudeStep_km = 10;
 Numerics.ProjectedAlongSamples = 160;
 Numerics.ProjectedAcrossSamples = 24;
 Numerics.OrbitalPositionSamples = 12;
-Numerics.MissionDateSamples = 24;
+Numerics.MissionDateSamples = 12;
 Numerics.RunGeometrySelfChecks = true; % Small analytic checks before the main run
 % Midpoint samples span the full mission duration and orbital argument of
 % latitude. Increase date/orbit/area/orientation resolution for convergence.
