@@ -1,5 +1,6 @@
 # MATLAB autosave files
 *.asv
+/model/Payload Models/Event Data Simulation Model/census/
 
 # Windows folder settings
 desktop.ini
