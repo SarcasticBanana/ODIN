@@ -1,18 +1,17 @@
 clear; clc; close all;
+odinPath();
 
 nx = 2560;
 ny = 2560;
 N = 20;
 % odd indices are x=0, y=any (with pos x vel)
 % even indices are x=any, y=0 (with pos y vel)
-% x0s = round(linspace(0,nx,N));
 x0s = round(rand(1,N)*nx);
 x0s(1:2:end) = 0;
-% y0s = round(linspace(0,ny,N));
 y0s = round(rand(1,N)*ny);
 y0s(2:2:end) = 0;
-vMax = 2e3;
-vxs = rand(1,N)*vMax;
+vMax = 1e3; % for a max diagonal event, the fastest an object can go to cross in 0.5s
+vxs = randn(1,N)*vMax;
 vxs(2:2:end) = vxs(2:2:end).*(round(rand(1,N/2))*2-1);
 vys = rand(1,N)*vMax;
 vys(1:2:end) = vys(1:2:end).*(round(rand(1,N/2))*2-1);
@@ -24,7 +23,7 @@ y0s(tfilter) = [];
 vxs(tfilter) = [];
 vys(tfilter) = [];
 N = nnz(~(tfilter));
-disp(['Proceeding with ', num2str(N), ' long-enough points']);
+disp(['Proceeding with ', num2str(N), ' long-enough events']);
 
 figure; quiver(x0s,y0s,vxs,vys);
 xline([0,nx]);
@@ -45,26 +44,34 @@ for i=1:Npost
     vxpost(i) = str2double(regex{1}{3});
     vypost(i) = str2double(regex{1}{4});
 end
+tspost = min(abs((nx.*(vxpost>0)-x0post)./vxpost),abs((ny.*(vypost>0)-y0post)./vypost));
 %%
 figure;
-quiver(x0s,y0s,vxs,vys);
+quiver(x0post,y0post,vxpost,vypost);
 grid on;
 xline([0,nx])
 yline([0,nx])
 
 figure;
 histogram(vecnorm([vxpost;vypost]),round(Npost/4));
-xlabel("Magnitude of Velocity");
+xlabel("Magnitude of Velocity (px/s)");
 
 figure;
-histogram(dataRate,round(Npost/4));
+histogram(dataRate/1e6,round(Npost/4));
 xlabel('Data Rate (Mbps)');
 
 figure;
 scatter(vecnorm([vxpost;vypost]),dataRate/1e6);
 grid on;
-xlabel('Magnitude of Velocity');
+xlabel('Magnitude of Velocity (px/s)');
 ylabel('Data Rate (Mbps)');
+
+figure;
+scatter(tspost,dataRate/1e6);
+grid on;
+xlabel('Time in FOV (s)');
+ylabel('Data Rate (Mbps)');
+
 
 %% EVT 3.0 16-bit word encoding
 function bps = txt2binCalc(filename)
