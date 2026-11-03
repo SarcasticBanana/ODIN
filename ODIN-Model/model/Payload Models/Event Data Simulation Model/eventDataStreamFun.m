@@ -44,7 +44,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     lam_bg = 12;                % Sky background light on each pixel (photons/s)
     
     %% 3. EVENT CIRCUIT PARAMETERS  (the "leaky bucket")
-    a         = 2.55;          % Leak (voltage decay) rate, 1/s. Bigger = the
+    a         = 2.2;          % Leak (voltage decay) rate, 1/s. Bigger = the
                                % bucket empties faster = shorter tail and (in full
                                % noise mode) more background events.
     b         = 100.0;         % Gain (how much each photon splashes in). It
@@ -66,7 +66,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
                                % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
     f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
-    sigma_psf = 1.3;           % Blur (Gaussian PSF standard deviation) in pixels
+    sigma_psf = 1.15;           % Blur (Gaussian PSF standard deviation) in pixels
             
     %% 5. DERIVED QUANTITIES
     fullNoise = strcmpi(bgMode, 'full noise');
@@ -200,9 +200,9 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     fprintf('Finished in %.1f s. Total events: %d (circuit %d; +: %d, -: %d)\n', ...
         toc, size(events_out,1), nTarget, sum(events(:,3)>0), sum(events(:,3)<0));
     if nargin<6
-        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/census/synthetic_debris_events_x%i_y%i_vx%.0f_vy%.0f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
+        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/census/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
     else
-        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/censusNoise/synthetic_debris_events_x%i_y%i_vx%.0f_vy%.0f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
+        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/censusNoise/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
     end
     % fprintf('Wrote synthetic_debris_events.txt  (columns: x y pol t_us)\n');
 end
