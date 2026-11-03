@@ -1,4 +1,4 @@
-function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy)
+function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     tic;
     %% 0. RANDOM SEED
     % Fixing the seed makes every run identical. Use 'shuffle' for a new random
@@ -11,7 +11,9 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy)
     
     nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
                                % angular-rate pipeline.
-    T_sim = min(abs((nx.*(vx>0)-x0_init)./vx),abs((ny.*(vy>0)-y0_init)./vy));              % total simulated time (seconds)
+    if nargin<6
+        T_sim = min(abs((nx.*(vx>0)-x0_init)./vx),abs((ny.*(vy>0)-y0_init)./vy));              % total simulated time (seconds)
+    end
     disp(['Simulating T = ',num2str(T_sim), 's of data']);
     dt    = 1e-3;              % time step used to LOOK UP the target's light on
                                % each pixel (seconds). Photon arrival times are
@@ -29,7 +31,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy)
                                % Calibrate this to your real data's median rate.
     
     % --- used by 'full noise' mode only ---
-    lambda_r_full = 10.76;       % Reference photon flux (photons/s) in full-noise
+    lambda_r_full = 10.65;       % Reference photon flux (photons/s) in full-noise
                                % mode. The closer it is to lam_bg, the QUIETER the
                                % background. lambda_r_full = lam_bg gives zero
                                % noise. With a=10, Delta_lam=0.10, lam_bg=5:
@@ -59,7 +61,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy)
     x0 = x0_init - (vx * t_delay);
     y0 = y0_init - (vy * t_delay);
     
-    Phi_0     = 12000;         % Target's average total photon flux (photons/s),
+    % Phi_0     = 12000;         % Target's average total photon flux (photons/s),
                                % summed over all the pixels its blur covers
     mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
                                % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
@@ -197,7 +199,11 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy)
     
     fprintf('Finished in %.1f s. Total events: %d (circuit %d; +: %d, -: %d)\n', ...
         toc, size(events_out,1), nTarget, sum(events(:,3)>0), sum(events(:,3)<0));
-    writematrix(events_out, sprintf("census/synthetic_debris_events_x%i_y%i_vx%.0f_vy%.0f.txt",x0,y0_init,vx,vy), 'Delimiter', 'space');
+    if nargin<6
+        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/census/synthetic_debris_events_x%i_y%i_vx%.0f_vy%.0f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
+    else
+        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/censusNoise/synthetic_debris_events_x%i_y%i_vx%.0f_vy%.0f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
+    end
     % fprintf('Wrote synthetic_debris_events.txt  (columns: x y pol t_us)\n');
 end
 

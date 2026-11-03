@@ -28,12 +28,32 @@ disp(['Proceeding with ', num2str(N), ' long-enough events']);
 figure; quiver(x0s,y0s,vxs,vys);
 xline([0,nx]);
 yline([0,nx]);
-%%
+%% using random x0, y0 values
+% implement phi_0 photon flux 
+Phi0 = 12e3;
 for i=1:N
-    [events] = eventDataStreamFun(x0s(i),y0s(i),vxs(i),vys(i));
+    [~] = eventDataStreamFun(x0s(i),y0s(i),vxs(i),vys(i),Phi0);
 end
+
+%% full random noise
+clear; clc; close all;
+odinPath();
+
+nx = 2560;
+ny = 2560;
+N = 10;
+
+Ts = linspace(20,40,N);
+
+Phi0 = 0;
+
+for i=1:N
+    [~] = eventDataStreamFun(-nx,-ny,0,0,Phi0,Ts(i));
+end
+
 %%
-filelist = dir("model/Payload Models/Event Data Simulation Model/census/*.txt");
+% filelist = dir("model/Payload Models/Event Data Simulation Model/census/*.txt");
+filelist = dir("model/Payload Models/Event Data Simulation Model/censusNoise/*.txt");
 Npost = length(filelist);
 dataRate = zeros(1,Npost);
 detectable = zeros(1,Npost);
@@ -41,22 +61,29 @@ x0post = zeros(1,Npost);
 y0post = zeros(1,Npost);
 vxpost = zeros(1,Npost);
 vypost = zeros(1,Npost);
+tspost = zeros(1,Npost);
 
 for i=1:Npost
     filepath = [filelist(i).folder,'\',filelist(i).name];
     dataRate(i) = txt2binCalc(filepath);
-    detectable(i) = AngularRateFun(filepath);
+    if ~contains(filelist(i).folder,'Noise')
+        detectable(i) = AngularRateFun(filepath);
+    end
 
-    regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+).txt",'tokens');
+    regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+)_tsim(.+).txt",'tokens');
     x0post(i) = str2double(regex{1}{1});
     y0post(i) = str2double(regex{1}{2});
     vxpost(i) = str2double(regex{1}{3});
     vypost(i) = str2double(regex{1}{4});
+    tspost(i) = str2double(regex{1}{5});
 end
-tspost = min(abs((nx.*(vxpost>0)-x0post)./vxpost),abs((ny.*(vypost>0)-y0post)./vypost));
+% tspost = min(abs((nx.*(vxpost>0)-x0post)./vxpost),abs((ny.*(vypost>0)-y0post)./vypost));
 
 save model\'Payload Models'\'Event Data Simulation Model'\eventSamples.mat Npost x0post y0post vxpost vypost dataRate detectable tspost
+
 %%
+close all;
+
 figure;
 quiver(x0post,y0post,vxpost,vypost);
 grid on;
@@ -81,33 +108,25 @@ xlabel('Magnitude of Velocity (px/s)');
 ylabel('Data Rate (Mbps)');
 
 figure; hold on;
-scatter(tspost(detectLog),dataRate(detectLog)/1e6,'b');
-scatter(tspost(~detectLog),dataRate(~detectLog)/1e6,'r');
+if all(~detectLog)
+    scatter(tspost,dataRate/1e6);
+else
+    scatter(tspost(detectLog),dataRate(detectLog)/1e6,'b');
+    scatter(tspost(~detectLog),dataRate(~detectLog)/1e6,'r');
+    legend("Detectable","Not Detectable");
+end
 grid on;
-legend("Detectable","Not Detectable");
 xlabel('Time in FOV (s)');
 ylabel('Data Rate (Mbps)');
 
 
-%% EVT 3.0 16-bit word encoding
+%% 64-bit encoding
 function bps = txt2binCalc(filename)
     rawData = readmatrix(filename);
-    % N = length(rawData);
-    xs = rawData(:,1);
-    ys = rawData(:,2);
-    % pols = rawData(:,3);
-    times = rawData(:,4);
-    clear rawData;
+    N = length(rawData);
+    nBits = N*64;
+    tTot = rawData(end,4)/1e6;
     
-    nBitsTime = 32*numel(unique(times));
-    
-    reprepYs = numel(find(ys==circshift(ys,1) & ys==circshift(ys,2)));
-    repYs = numel(find(ys==circshift(ys,1))) - reprepYs*2;
-    uniqueYs = numel(ys)-repYs;
-    nBitsY = 16*(uniqueYs - repYs - 2*reprepYs);
-    nBitsX = 16*(numel(xs));
-    
-    nBitsTot = nBitsTime + nBitsY + nBitsX;
-    bps = nBitsTot/(times(end)/1e6);
+    bps = nBits/tTot;
     disp(['Output: ', num2str(bps/1e6), ' Mbps']);
 end
