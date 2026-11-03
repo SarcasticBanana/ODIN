@@ -46,9 +46,9 @@ rng(seed);
 %% 1. RUN SETTINGS
 bgMode = 'full noise';          % 'clean'  or  'full noise'   (see header)
 
-nx = 1280;  ny = 1280;      % sensor size in pixels. MUST match nx/ny in your
+nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
                            % angular-rate pipeline.
-T_sim = 1;              % total simulated time (seconds)
+T_sim = 3;              % total simulated time (seconds)
 dt    = 1e-3;              % time step used to LOOK UP the target's light on
                            % each pixel (seconds). Photon arrival times are
                            % NOT limited to this grid. Keep the target's
@@ -65,7 +65,7 @@ noiseRate = 0.10;          % Random "salt" noise added on top of the target
                            % Calibrate this to your real data's median rate.
 
 % --- used by 'full noise' mode only ---
-lambda_r_full = 10.76;       % Reference photon flux (photons/s) in full-noise
+lambda_r_full = 10.65;       % Reference photon flux (photons/s) in full-noise
                            % mode. The closer it is to lam_bg, the QUIETER the
                            % background. lambda_r_full = lam_bg gives zero
                            % noise. With a=10, Delta_lam=0.10, lam_bg=5:
@@ -78,7 +78,7 @@ maxEventsAllowed = 10e15;    % Safety cap: full-noise mode stops with an error
 lam_bg = 12;                % Sky background light on each pixel (photons/s)
 
 %% 3. EVENT CIRCUIT PARAMETERS  (the "leaky bucket")
-a         = 2.55;          % Leak (voltage decay) rate, 1/s. Bigger = the
+a         = 2.2;          % Leak (voltage decay) rate, 1/s. Bigger = the
                            % bucket empties faster = shorter tail and (in full
                            % noise mode) more background events.
 b         = 100.0;         % Gain (how much each photon splashes in). It
@@ -86,45 +86,46 @@ b         = 100.0;         % Gain (how much each photon splashes in). It
                            % change the event rate for steady light.
 Delta_lam = 0.13;          % Relative brightness change that triggers an
                            % event (0.10 = 10%). Bigger = fewer events.
-%% 4. TARGET & OPTICS - Validation
-x0_init = 62;  y0_init = 0;       % Starting centroid of the target (pixels)
-vx = -1281;  vy = 1849; % Target velocity (pixels/second). Negative vx =
-                           % moving left. Image y points DOWN, so positive vy
-                           % moves the target down the screen.
-t_delay = 0.0;
-x0 = x0_init - (vx * t_delay);
-y0 = y0_init - (vy * t_delay);
 
-Phi_0     = 12000;         % Target's average total photon flux (photons/s),
-                           % summed over all the pixels its blur covers
-mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
-                           % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
-f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
-sigma_psf = 1.3;           % Blur (Gaussian PSF standard deviation) in pixels
+ %% 4. TARGET & OPTICS - Validation
+ x0_init = 2560;  y0_init = 1280;       % Starting centroid of the target (pixels)
+ vx = -2000;  vy = 0; % Target velocity (pixels/second). Negative vx =
+                            % moving left. Image y points DOWN, so positive vy
+                            % moves the target down the screen.
+ t_delay = 0.0;
+ x0 = x0_init - (vx * t_delay);
+ y0 = y0_init - (vy * t_delay);
+ 
+ Phi_0     = 688000;         % Target's average total photon flux (photons/s),
+                            % summed over all the pixels its blur covers
+ mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
+                            % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
+ f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
+ sigma_psf = 1.15;           % Blur (Gaussian PSF standard deviation) in pixels
+ 
+ % Optics, used ONLY to print the ground-truth angular rate at the end
+ pixPitch_m = 4.86e-6;      % pixel size (meters)
+ focalLen_m = 0.475;          % telescope focal length (meters)
 
-% Optics, used ONLY to print the ground-truth angular rate at the end
-pixPitch_m = 4.86e-6;      % pixel size (meters)
-focalLen_m = 0.475;          % telescope focal length (meters)
-
-%% 4. TARGET & OPTICS - Calibrated
-% x0_init = 1280;  y0_init = 90;       % Starting centroid of the target (pixels)
-% vx = -611.54;  vy = 43.36; % Target velocity (pixels/second). Negative vx =
-%                            % moving left. Image y points DOWN, so positive vy
-%                            % moves the target down the screen.
-% t_delay = 0.3901;
-% x0 = x0_init - (vx * t_delay);
-% y0 = y0_init - (vy * t_delay);
+% %% 4. TARGET & OPTICS - Calibrated
+%  x0_init = 1280;  y0_init = 90;       % Starting centroid of the target (pixels)
+%  vx = -611.54;  vy = 43.36; % Target velocity (pixels/second). Negative vx =
+%                             % moving left. Image y points DOWN, so positive vy
+%                             % moves the target down the screen.
+%  t_delay = 0.3901;
+%  x0 = x0_init - (vx * t_delay);
+%  y0 = y0_init - (vy * t_delay);
 % 
-% Phi_0     = 250000;         % Target's average total photon flux (photons/s),
-%                            % summed over all the pixels its blur covers
-% mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
-%                            % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
-% f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
-% sigma_psf = 1.3;           % Blur (Gaussian PSF standard deviation) in pixels
+%  Phi_0     = 688000;         % Target's average total photon flux (photons/s),
+%                             % summed over all the pixels its blur covers
+%  mod_depth = 0.0;           % Brightness flicker size as a fraction of Phi_0
+%                             % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
+%  f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
+%  sigma_psf = 1.15;           % Blur (Gaussian PSF standard deviation) in pixels
 % 
-% % Optics, used ONLY to print the ground-truth angular rate at the end
-% pixPitch_m = 4.86e-6;      % pixel size (meters)
-% focalLen_m = 0.6;          % telescope focal length (meters)
+%  % Optics, used ONLY to print the ground-truth angular rate at the end
+%  pixPitch_m = 4.86e-6;      % pixel size (meters)
+%  focalLen_m = 0.6;          % telescope focal length (meters)
 
 %% 5. DERIVED QUANTITIES
 fullNoise = strcmpi(bgMode, 'full noise');
@@ -351,8 +352,7 @@ tAxis = ((1:nTb)-0.5)*T_sim/nTb;                      % center time of each bin 
 cntX = accumarray([tb, events(:,1)], 1, [nTb nx]);
 cntY = accumarray([tb, events(:,2)], 1, [nTb ny]);
 
-% figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
-figure('Color','w','Name','Space-time density');
+figure('Color','w','Name','Space-time density','Position',[100 100 1150 450]);
 subplot(1,2,1);
 imagesc(tAxis, 1:nx, log10(1+cntX')); axis xy; colorbar; hold on;
 if showTruth, plot(t_vec, x_bar, 'w--'); end
@@ -370,8 +370,7 @@ xlabel('Time (s)'); ylabel('y [px]'); title('y vs time, log_{10}(1+N)');
 % bright streak; the faint speckle is background noise.
 Nimg = accumarray([events(:,2), events(:,1)], 1, [ny nx]);
 
-% figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
-figure('Color','w','Name','Accumulated events');
+figure('Color','w','Name','Accumulated events','Position',[100 100 1000 600]);
 imagesc(log10(1+Nimg)); axis image; colormap(gca, hot(256)); colorbar; hold on;
 if showTruth, plot(x_bar, y_bar, 'c--'); end
 xlim([1 nx]); ylim([1 ny]);
