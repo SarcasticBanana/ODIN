@@ -9,13 +9,16 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     %% 1. RUN SETTINGS
     bgMode = 'full noise';          % 'clean'  or  'full noise'   (see header)
     
-    nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
+    % nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
                                % angular-rate pipeline.
+    nx = 50;  ny = 50;      % sensor size in pixels. MUST match nx/ny in your
+                               % angular-rate pipeline.
+                               
     if nargin<6
         T_sim = min(abs((nx.*(vx>0)-x0_init)./vx),abs((ny.*(vy>0)-y0_init)./vy));              % total simulated time (seconds)
     end
     disp(['Simulating T = ',num2str(T_sim), 's of data']);
-    dt    = 1e-3;              % time step used to LOOK UP the target's light on
+    dt    = 0.5;              % time step used to LOOK UP the target's light on
                                % each pixel (seconds). Photon arrival times are
                                % NOT limited to this grid. Keep the target's
                                % motion per step (v*dt) below ~0.3 px.

@@ -39,16 +39,16 @@ end
 clear; clc; close all;
 odinPath();
 
-nx = 2560;
-ny = 2560;
-N = 1;
+nx = 50;
+ny = 50;
+N = 20;
 
-Ts = linspace(1,30,N);
+Ts = linspace(1000,2000,N);
 
 Phi0 = 0;
 
 for i=1:N
-    [~] = eventDataStreamFun(-nx,-ny,0,0,Phi0,Ts(i));
+    eventDataStreamFun(-nx,-ny,0,0,Phi0,Ts(i));
 end
 
 %%
@@ -68,6 +68,8 @@ tspost = zeros(1,Npost);
 for i=1:Npost
     filepath = [filelist(i).folder,'\',filelist(i).name];
     [dataRate64(i),dataRate16(i)] = txt2binCalc(filepath);
+    dataRate64(i) = dataRate64(i)*(2560^2)/(50^2);
+    dataRate16(i) = dataRate16(i)*(2560^2)/(50^2);
     if ~contains(filelist(i).folder,'Noise')
         detectable(i) = AngularRateFun(filepath);
     end
