@@ -35,8 +35,8 @@ R_EPS = 100;
 R_Struct = 10; % 10 b/s, guess
 headerBits = 48;
 dataBitsPerHeader = 65536*8;
-packetizationInflation = (headerBits+dataBitsPerHeader)/dataBitsPerHeader; 
-pi_c = 2.34/packetizationInflation; % compression ratio, probably. Note: should be division not mulitplication? the inflation should decrease amount of compression?
+packetizationInflation = (headerBits+dataBitsPerHeader)/dataBitsPerHeader;
+pi_c = @(x) (randn(1,x)*0.0282+2.2357)/packetizationInflation; % compression ratio,
 storage_cap = 0.8*64 * 8e9; % [b] Upper bound on storage SD card
 recollect_threshold = 0; % [b] Describes threshold required during calibration to start re-collecting data after SD card fills up.
 
@@ -59,12 +59,12 @@ end
 %
 % debrisRateOut = interp1(out.t,debrisRate,tout)'; % events/second
 
-% DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,i),1:length(DLIntervals),'UniformOutput',false))');
-% 
-% R_payload =  (dataPerDebris) .* double(~DLIdx);
+DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,i),1:length(DLIntervals),'UniformOutput',false))');
+
+% R_payload =  dataRates .* double(~DLIdx);
 % 
 % % only downlink data that you can downlink
-% K_DLmin = min(Dout(:,1) + 1/pi_c*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
+K_DLmin = min(Dout(:,1) + 1/pi_c(1)*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
 % 
 % dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
 %%
@@ -104,7 +104,7 @@ function status = odeOutput(t,D,flag)
         % elseif eventHappening && (t(end)-tEvent)>randn(1)*5+8
         %     eventHappening = 0;
         % end
-        if any(isapprox(t(end)/870180,0.01:0.01:1,'tight'))
+        if any(isapprox(t(end)/870180,0.01:0.01:1,'loose'))
             disp(['time %: ',num2str(t(end)/870180*100)]);
         end
         status = 0;
@@ -112,10 +112,8 @@ function status = odeOutput(t,D,flag)
 end
 
 function dDdt = dataTime(t,D,phase_type,dataRateTimes,dataRates,DLIntervals,K_DL,R_GNC,R_EPS,R_Struct,pi_c,storage_cap)
-    global eventHappening downlinking
-    % if t>=1.59017*24*3600
-    %     keyboard;
-    % end
+    global eventHappening
+
     DLIdx = any(arrayfun(@(i) t>=DLIntervals(1,i) & t<=DLIntervals(2,i),1:length(DLIntervals)));
     ObservingIdx = ~any(arrayfun(@(i) t>=DLIntervals(1,i)-300 & t<=DLIntervals(2,i)+300,1:length(DLIntervals)));
 
@@ -145,8 +143,9 @@ function dDdt = dataTime(t,D,phase_type,dataRateTimes,dataRates,DLIntervals,K_DL
         R_payload = 0; % Storage is full, camera is stopped.
     end
 
-    K_DLmin = min(D(1) + 1/pi_c*(R_GNC + R_EPS + R_Struct),K_DL) * double(DLIdx); % only downlink data that you can downlink for min bound
+    thisPi_c = pi_c(1);
+    K_DLmin = min(D(1) + 1/thisPi_c*(R_GNC + R_EPS + R_Struct),K_DL) * double(DLIdx); % only downlink data that you can downlink for min bound
 
-    dDdt = [1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
+    dDdt = [1/thisPi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
             0];
 end
