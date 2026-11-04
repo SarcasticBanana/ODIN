@@ -12,10 +12,6 @@ N = length(out.t);
 
 phase_type = "Calibrate"; % Phase 1 = "Calibrate", Phase 2 = "Nominal"
 
-% lat = sign(out.r(3,:)) .* acosd(vecnorm(out.r(1:2,:)) ./ vecnorm(out.r));
-% figure; plot(out.t,lat);
-% figure; plot(lat,normpdf(lat,0,120));
-
 % [rate_per_s,details] = debrisDetectionRate(out.t,out.r',out.v',vecnorm(out.r)'-cfg.Re,cfg,out.rsun');
 % debrisRate = ones(1,N)*details.TotalRate_per_s;
 
@@ -25,11 +21,9 @@ debrisRates = yData;
 debrisRates = debrisRates(out.t<=out.T);
 debrisRate = repmat(debrisRates,1,nOrbit);
 
-dataPerDebris = 22e6;
-% dataBG = 17e6;
-% dataDebris = 20e6; % when detection
-
-% t = 3600*24*10;
+noiseSamples = load('model/Payload Models/Event Data Simulation Model/eventSamplesNoise.mat');
+dataRateTimes = noiseSamples.tspost;
+dataRates = noiseSamples.dataRate64;
 
 st = stations();
 [dl,c] = downlinkTimes(out,cfg,st);
@@ -43,85 +37,110 @@ headerBits = 48;
 dataBitsPerHeader = 65536*8;
 packetizationInflation = (headerBits+dataBitsPerHeader)/dataBitsPerHeader; 
 pi_c = 2.34/packetizationInflation; % compression ratio, probably. Note: should be division not mulitplication? the inflation should decrease amount of compression?
-storage_cap = 64 * 8e9; % [b] Upper bound on storage SD card
+storage_cap = 0.8*64 * 8e9; % [b] Upper bound on storage SD card
 recollect_threshold = 0; % [b] Describes threshold required during calibration to start re-collecting data after SD card fills up.
 
 dt = 0.5;
-global eventHappening tEvent
+global eventHappening tEvent downlinking
 eventHappening = 0;
 tEvent = 0;
+downlinking = 0;
 
 if strcmpi(phase_type, "Calibrate")
-    opts = odeset('NonNegative',1,'MaxStep',10); % just collect data, no need to model probabilist events
+    opts = odeset('NonNegative',1,'MaxStep',10,'AbsTol',1,'OutputFcn', @odeOutput); % just collect data, no need to model probabilist events
     t_vec = [0, out.t(end)]; % Let ode45 choose step
 else
-    opts = odeset('NonNegative',1,'MaxStep',10,'OutputFcn', @odeOutput);
+    opts = odeset('NonNegative',1,'MaxStep',10,'AbsTol',1,'OutputFcn', @odeOutput);
     t_vec = 0:dt:out.t(end); 
 end
 
-[tout,Dout] = ode45(@(t,D) dataTime(t,D,phase_type,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c, storage_cap), ...
+[tout,Dout] = ode45(@(t,D) dataTime(t,D,phase_type,dataRateTimes,dataRates,DLIntervals,K_DL,R_GNC,R_EPS,R_Struct,pi_c,storage_cap), ...
     t_vec,[0; 0],opts);
 %
 % debrisRateOut = interp1(out.t,debrisRate,tout)'; % events/second
 
-DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,i),1:length(DLIntervals),'UniformOutput',false))');
-
-R_payload =  (dataPerDebris) .* double(~DLIdx);
-
-% only downlink data that you can downlink
-K_DLmin = min(Dout(:,1) + 1/pi_c*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
-
-dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
+% DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,i),1:length(DLIntervals),'UniformOutput',false))');
+% 
+% R_payload =  (dataPerDebris) .* double(~DLIdx);
+% 
+% % only downlink data that you can downlink
+% K_DLmin = min(Dout(:,1) + 1/pi_c*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
+% 
+% dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
 %%
 figure; hold on;
-plot(tout,Dout(:,1),'b','LineWidth',2);
-ylabel("Data Stored (Bits)");
-yline(storage_cap, '-b')
-yyaxis('right');
+plot(tout/24/3600,Dout(:,1)/1e9);
+ylabel("Data Stored (Gb)");
+% yline(16*8-0.5*8)
+% yline(storage_cap/1e9, '-b');
+% yyaxis('right');
 % plot(tout,dDdt,'r','LineWidth',2);
-yline(0,'r--');
+% yline(0,'r--');
 % xline(out.T*(1:nOrbit),'k--');
-xline(24*3600*(1:out.t(end)/(24*3600)));
-ylabel("Total Data Rate (Bits/s)");
-xlabel("Time (s)");
+% xline(24*3600*(1:out.t(end)/(24*3600)));
+xlim([0 out.t(end)/24/3600])
+% ylabel("Total Data Rate (Bits/s)");
+xlabel("Time (days)");
 box on; grid on;
 ax = gca;
-ax.YAxis(1).Color = [0 0 1];
-ax.YAxis(2).Color = [1 0 0];
+% ax.YAxis(1).Color = [0 0 1];
+% ax.YAxis(2).Color = [1 0 0];
 
 function status = odeOutput(t,D,flag)
     global eventHappening tEvent
     if isempty(flag)
-        if ~eventHappening && length(t)>1
-            % debrisRate = interp1(oldTime,debrisRate,t(end));
-            debrisRate = 1.98e-3; % assume const avg debris rate
-            dt = t(end)-t(1);
-            % pEvent = exp(-debrisRate)*debrisRate^(dt);
-            pEvent = debrisRate*dt*exp(-debrisRate*dt);
-            eventHappening = rand(1)<pEvent;
-            if eventHappening
-                % disp(['probability of event happening in ',num2str(dt),' is ',num2str(pEvent)]);
-                tEvent = t(end);
-                disp(['time %: ',num2str(t(end)/290040*100)]);
-            end
-        elseif eventHappening && (t(end)-tEvent)>randn(1)*5+8
-            eventHappening = 0;
+        % if ~eventHappening && length(t)>1
+        %     % debrisRate = interp1(oldTime,debrisRate,t(end));
+        %     debrisRate = 1.98e-3; % assume const avg debris rate
+        %     dt = t(end)-t(1);
+        %     % pEvent = exp(-debrisRate)*debrisRate^(dt);
+        %     pEvent = debrisRate*dt*exp(-debrisRate*dt);
+        %     eventHappening = rand(1)<pEvent;
+        %     if eventHappening
+        %         % disp(['probability of event happening in ',num2str(dt),' is ',num2str(pEvent)]);
+        %         tEvent = t(end);
+        %         disp(['time %: ',num2str(t(end)/870180*100)]);
+        %     end
+        % elseif eventHappening && (t(end)-tEvent)>randn(1)*5+8
+        %     eventHappening = 0;
+        % end
+        if any(isapprox(t(end)/870180,0.01:0.01:1,'tight'))
+            disp(['time %: ',num2str(t(end)/870180*100)]);
         end
-        
         status = 0;
     end
 end
 
-function dDdt = dataTime(t,D,phase_type,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c, storage_cap)
-    global eventHappening
+function dDdt = dataTime(t,D,phase_type,dataRateTimes,dataRates,DLIntervals,K_DL,R_GNC,R_EPS,R_Struct,pi_c,storage_cap)
+    global eventHappening downlinking
+    % if t>=1.59017*24*3600
+    %     keyboard;
+    % end
     DLIdx = any(arrayfun(@(i) t>=DLIntervals(1,i) & t<=DLIntervals(2,i),1:length(DLIntervals)));
+    ObservingIdx = ~any(arrayfun(@(i) t>=DLIntervals(1,i)-300 & t<=DLIntervals(2,i)+300,1:length(DLIntervals)));
+
+    % if D(1)>=storage_cap
+    %     downlinking = 1;
+    % elseif downlinking && D(1)<10
+    %     downlinking = 0;
+    % end
 
     if strcmpi(phase_type,"Calibrate")
-        R_payload = dataPerDebris*double(~DLIdx); % for calibration
+        if t>max(dataRateTimes)
+            dataRate = 15e6;
+        else
+            dataRate = interp1(dataRateTimes,dataRates,t,'linear','extrap');
+        end
+        R_payload = dataRate*double(ObservingIdx); % for calibration
     elseif strcmpi(phase_type,"Nominal")
-        R_payload = dataPerDebris * double(~DLIdx) * double(eventHappening);
+        if t>max(dataRateTimes)
+            dataRate = 15e6;
+        else
+            dataRate = interp1(dataRateTimes,dataRates,t,'linear','extrap');
+        end
+        R_payload = dataRate * double(ObservingIdx) * double(eventHappening);
     end
-    % TODO: payload should also be stopped in eclipse
+
     if D(1) >= storage_cap
         R_payload = 0; % Storage is full, camera is stopped.
     end
