@@ -6,7 +6,7 @@ odinPath;
 cfg = config();
 cfg.h = 600;                  % Your chosen altitude [km]
 cfg.ode.dtOut = 1*60;
-nOrbit = 150; % change this for 10 day sim
+nOrbit = 15; % change this for 10 day sim
 out = propagate(cfg, nOrbit);     % Ale's orbit calculation
 N = length(out.t);
 
@@ -30,13 +30,14 @@ st = stations();
 DLIntervals = dl';
 
 K_DL = 56e6; % 56 Mbps, probably
-R_GNC = 100; % 100 b/s, guess
-R_EPS = 100;
-R_Struct = 10; % 10 b/s, guess
+R_GNC = 230.4e3; % XACT baud: 230.4kHz
+R_EPS = 100; % 100 b/s, guess
+R_Struct = 100;
 headerBits = 48;
 dataBitsPerHeader = 65536*8;
 packetizationInflation = (headerBits+dataBitsPerHeader)/dataBitsPerHeader;
-pi_c = @(x) (randn(1,x)*0.0282+2.2357)/packetizationInflation; % compression ratio,
+pi_cAvg = 2.2357;
+pi_c = @(x) (randn(1,x)*0.0282+pi_cAvg)/packetizationInflation; % compression ratio,
 storage_cap = 0.8*64 * 8e9; % [b] Upper bound on storage SD card
 recollect_threshold = 0; % [b] Describes threshold required during calibration to start re-collecting data after SD card fills up.
 
@@ -64,10 +65,14 @@ DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,
 % R_payload =  dataRates .* double(~DLIdx);
 % 
 % % only downlink data that you can downlink
-K_DLmin = min(Dout(:,1) + 1/pi_c(1)*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
+K_DLmin = min(Dout(:,1) + 1/pi_cAvg*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
 % 
 % dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
-%%
+
+disp(['Max Data Stored: ',num2str(max(Dout(:,1))/1e9),'Gb = ',num2str(max(Dout(:,1))/8e9),'GB of data!']);
+totDownlinked = trapz(tout,K_DLmin)*pi_cAvg;
+disp(['Downlinked ',num2str(totDownlinked/1e9),'Gb = ',num2str(totDownlinked/8e9),'GB of data!']);
+
 figure; hold on;
 plot(tout/24/3600,Dout(:,1)/1e9);
 ylabel("Data Stored (Gb)");
@@ -104,7 +109,7 @@ function status = odeOutput(t,D,flag)
         % elseif eventHappening && (t(end)-tEvent)>randn(1)*5+8
         %     eventHappening = 0;
         % end
-        if any(isapprox(t(end)/870180,0.01:0.01:1,'loose'))
+        if any(isapprox(t(end)/870180,0.001:0.001:1,'loose'))
             disp(['time %: ',num2str(t(end)/870180*100)]);
         end
         status = 0;
@@ -139,9 +144,9 @@ function dDdt = dataTime(t,D,phase_type,dataRateTimes,dataRates,DLIntervals,K_DL
         R_payload = dataRate * double(ObservingIdx) * double(eventHappening);
     end
 
-    if D(1) >= storage_cap
-        R_payload = 0; % Storage is full, camera is stopped.
-    end
+    % if D(1) >= storage_cap
+    %     R_payload = 0; % Storage is full, camera is stopped.
+    % end
 
     thisPi_c = pi_c(1);
     K_DLmin = min(D(1) + 1/thisPi_c*(R_GNC + R_EPS + R_Struct),K_DL) * double(DLIdx); % only downlink data that you can downlink for min bound
