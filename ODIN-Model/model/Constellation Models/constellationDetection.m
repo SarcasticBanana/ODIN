@@ -65,11 +65,11 @@ Shell.MaxAltitude_km = 1000;
 
 % ---------------- Spacecraft Orbit ----------------
 Orbit.Altitude_km = 600;
-Orbit.Type = "SSO";                    % "SSO" or "Circular"
-Orbit.Inclination_deg = 97.36;         % Used only for "Circular"
+Orbit.Type = "circular";                    % "SSO" or "Circular"
+Orbit.Inclination_deg = -97.36;         % Used only for "Circular"
 Orbit.NominalLTAN_hr = 18;
 Orbit.NumPlanes = 1;
-Orbit.SpacecraftPerPlane = 6;
+Orbit.SpacecraftPerPlane = 1;
 Orbit.BaselineLTANSpread_min = 15;
 
 % ---------------- Sensor Geometry / Response ----------------
@@ -132,7 +132,7 @@ Debris.NumInclinationSamples = 100;
 Debris.NumRAANSamples = 8;
 
 % ---------------- Operations / Exclusion Angles ----------------
-Comms.Downlink_min_per_day = 120;     % Total downlink time across all sessions
+Comms.Downlink_min_per_day = 180;     % Total downlink time across all sessions
 Comms.Transition_min_per_session = 10;% Total overhead per session, not per end
 Comms.Sessions_per_day = 1;
 
@@ -147,13 +147,13 @@ Exclusion.EarthLimbClearance_deg = 0.05;
 % a circumscribed cone is used (conservative at the corners).
 
 % ---------------- Architecture Trades ----------------
-Trade.RunArchitectureTrade = true;  % Enable once baseline inputs are checked
+Trade.RunArchitectureTrade = false;  % Enable once baseline inputs are checked
 Trade.NumPlanes = 1:6;
 Trade.SpacecraftPerPlane = 1:9;
 Trade.ArchitectureLTANSpread_min = 60;
 Trade.RunLTANTrade = false;
 Trade.LTANSpread_min = 0:10:180;
-Trade.RunAltitudeTrade = true;
+Trade.RunAltitudeTrade = false;
 Trade.SpacecraftAltitude_km = 575:25:700;
 % Optional trades retain V2.3's intent, but no unique/repeat-object plots.
 
@@ -181,6 +181,14 @@ Capability.AltitudeStep_km = 10;
 % This is a within-bin population-weighted sensor diagnostic, not a count of
 % objects of an exact diameter, shell-volume coverage, or guaranteed range.
 % NaN fraction means no observable passage weight; zero means none qualify.
+
+%---------------- Altitude detection plot settings-----------
+% Select representative diameters from Capability.Diameters_cm.
+% These labels describe the sensor response used for each population bin.
+AltitudePlot.Diameters_cm = [1 2 3];  % Add 5 to include the 5 cm response
+
+% true: entire constellation; false: one spacecraft
+AltitudePlot.UseConstellation = false;
 
 % ---------------- Plot / Output Controls ----------------
 Plot.MakeFigures = true;
@@ -444,8 +452,117 @@ if Output.SaveTables
     if isfield(Environment,'SourceFiles')
         fprintf(fid,'MASTER source: %s\n',Environment.SourceFiles{:});
     end
+
     fclose(fid);
     fprintf('Saved results: %s\n',runFolder);
+end
+
+
+%% Qualified detections by altitude band
+% CapabilityNumerator contains accumulated qualified passage-rate weights.
+% Normalize over all sampled planes, mission dates, and orbital positions.
+% Sun-excluded samples remain part of the averaging denominator.
+nSamples = Orbit.NumPlanes * ...
+    Numerics.MissionDateSamples * Numerics.OrbitalPositionSamples;
+
+perSpacecraftDay = Diagnostics.CapabilityNumerator ...
+    / nSamples * 86400 * Comms.Availability;
+
+constellationDay = perSpacecraftDay ...
+    * Orbit.NumPlanes * Orbit.SpacecraftPerPlane;
+
+% Matrix rows correspond to altitude bands; columns correspond to the
+% representative diameters in Capability.Diameters_cm.
+% AltitudeCapability uses the same ordering when flattened column-wise.
+AltitudeDetections = AltitudeCapability(:, ...
+    {'Diameter_cm','AltitudeLower_km','AltitudeUpper_km'});
+
+AltitudeDetections.PassagesPerSpacecraftPerDay = perSpacecraftDay(:);
+AltitudeDetections.PassagesConstellationPerDay = constellationDay(:);
+
+AltitudeDetections.PassagesPerSpacecraftMission = ...
+    perSpacecraftDay(:) * Mission.Duration_days;
+AltitudeDetections.PassagesConstellationMission = ...
+    constellationDay(:) * Mission.Duration_days;
+
+%% Plot daily and total mission detections by altitude band
+availableDiameters = unique(AltitudeDetections.Diameter_cm,'stable');
+requestedDiameters = unique(AltitudePlot.Diameters_cm,'stable');
+
+% Match requested sizes to available capability results.
+[isAvailable, diameterIndex] = ismembertol( ...
+    requestedDiameters, availableDiameters, 1e-8, 'DataScale',1);
+
+if any(~isAvailable)
+    warning('AltitudePlot:MissingSizes', ...
+        ['Requested diameters %s cm are not available. ' ...
+         'Available diameters are %s cm.'], ...
+        mat2str(requestedDiameters(~isAvailable)), ...
+        mat2str(availableDiameters(:)'));
+end
+
+plotDiameters = availableDiameters(diameterIndex(isAvailable));
+
+if isempty(plotDiameters)
+    warning('AltitudePlot:NoSizes', ...
+        'No requested diameters are available; altitude plots skipped.');
+else
+    % Select either constellation or single-spacecraft results.
+    if AltitudePlot.UseConstellation
+        dailyValues = AltitudeDetections.PassagesConstellationPerDay;
+        missionValues = AltitudeDetections.PassagesConstellationMission;
+        scopeLabel = 'Constellation';
+    else
+        dailyValues = AltitudeDetections.PassagesPerSpacecraftPerDay;
+        missionValues = AltitudeDetections.PassagesPerSpacecraftMission;
+        scopeLabel = 'Single spacecraft';
+    end
+
+    plotValues = {dailyValues, missionValues};
+    figureNames = {'Daily detections by altitude', ...
+                   'Mission detections by altitude'};
+    titleText = { ...
+        sprintf('%s qualified passages per day by altitude',scopeLabel), ...
+        sprintf('%s qualified passages over %.1f mission days', ...
+            scopeLabel,Mission.Duration_days)};
+    yLabelText = { ...
+        'Qualified passages / day per altitude band', ...
+        'Qualified passages over mission per altitude band'};
+
+    % Keep each diameter the same color in both figures.
+    plotColors = lines(numel(plotDiameters));
+
+    for figureIndex = 1:2
+        figure('Color','w','Name',figureNames{figureIndex});
+        ax = axes;
+        hold(ax,'on');
+
+        for k = 1:numel(plotDiameters)
+            rows = AltitudeDetections.Diameter_cm == plotDiameters(k);
+
+            altitude = (AltitudeDetections.AltitudeLower_km(rows) + ...
+                        AltitudeDetections.AltitudeUpper_km(rows))/2;
+            values = plotValues{figureIndex}(rows);
+
+            % Ensure points are connected in increasing altitude order.
+            [altitude, order] = sort(altitude);
+            values = values(order);
+
+            plot(ax,altitude,values,'-o', ...
+                'LineWidth',1.5,'MarkerSize',4, ...
+                'Color',plotColors(k,:), ...
+                'DisplayName',sprintf('%g cm response',plotDiameters(k)));
+        end
+
+        xlabel(ax,'Debris chord-midpoint altitude (km)','Color','k');
+        ylabel(ax,yLabelText{figureIndex},'Color','k');
+        title(ax,titleText{figureIndex},'Color','k');
+
+        set(ax,'Color','w','XColor','k','YColor','k','FontSize',12);
+        legend(ax,'Location','best','TextColor','k','Color','w');
+        grid(ax,'on');
+        hold(ax,'off');
+    end
 end
 
 %% 8. LOCAL FUNCTIONS
