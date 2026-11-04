@@ -3,7 +3,7 @@ odinPath();
 
 nx = 2560;
 ny = 2560;
-N = 20;
+N = 10;
 % odd indices are x=0, y=any (with pos x vel)
 % even indices are x=any, y=0 (with pos y vel)
 x0s = round(rand(1,N)*nx);
@@ -11,7 +11,7 @@ x0s(1:2:end) = 0;
 y0s = round(rand(1,N)*ny);
 y0s(2:2:end) = 0;
 vMax = 3e3; % for a max diagonal event, the fastest an object can go to cross in 0.5s
-vxs = randn(1,N)*vMax;
+vxs = rand(1,N)*vMax;
 vxs(2:2:end) = vxs(2:2:end).*(round(rand(1,N/2))*2-1);
 vys = rand(1,N)*vMax;
 vys(1:2:end) = vys(1:2:end).*(round(rand(1,N/2))*2-1);
@@ -71,7 +71,7 @@ for i=1:Npost
     dataRate64(i) = dataRate64(i)*(2560^2)/(50^2);
     dataRate16(i) = dataRate16(i)*(2560^2)/(50^2);
     if ~contains(filelist(i).folder,'Noise')
-        detectable(i) = AngularRateFun(filepath);
+        detectable(i) = AngularRateFun(filepath,"detection");
     end
 
     regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+)_tsim(.+).txt",'tokens');
@@ -136,6 +136,25 @@ grid on;
 xlabel('Time in FOV (s)');
 ylabel('Data Rate (Mbps)');
 
+%% calculate time for autodetection script
+filelist = dir("model/Payload Models/Event Data Simulation Model/census/*.txt");
+N = length(filelist);
+Npost = zeros(1,N);
+
+for i=1:N
+    filepath = [filelist(i).folder,'\',filelist(i).name];
+    rawData = readmatrix(filepath);
+    Npost(i) = length(rawData);
+    % [dataRate64(i),dataRate16(i),nBits16(i)] = txt2binCalc(filepath);
+    % try
+    %     % profile on;
+        AngularRateFun(filepath,"results");
+    %     % profile viewer
+    % catch
+    % end
+end
+Ops = nBins*2560*2560*21*21;
+
 %%
 function bps = fitDataRate(filename)
     rawData = readmatrix(filename);
@@ -179,7 +198,7 @@ function bps = fitDataRate(filename)
     fprintf("Fit to final slope of %.0f events/sec = %.2f Mbps with R^2 = %.6f\n",eventsPerSec,bps/1e6,gof.rsquare);
 end
 
-function [bps64,bps16] = txt2binCalc(filename)
+function [bps64,bps16,nBits16] = txt2binCalc(filename)
     % 64-bit encoding
     rawData = readmatrix(filename);
     N = length(rawData);
@@ -203,7 +222,7 @@ function [bps64,bps16] = txt2binCalc(filename)
     nBitsY = 16*(uniqueYs - repYs - 2*reprepYs);
     nBitsX = 16*(numel(xs));
     
-    nBitsTot = nBitsTime + nBitsY + nBitsX;
-    bps16 = nBitsTot/(times(end)/1e6);
+    nBits16 = nBitsTime + nBitsY + nBitsX;
+    bps16 = nBits16/(times(end)/1e6);
     disp(['16-bit Output: ', num2str(bps16/1e6), ' Mbps']);
 end

@@ -1,15 +1,15 @@
-function results = AngularRateFun(fname)
+function results = AngularRateFun(fname,runtype)
     
     tStart = tic;
     
     %% 1. USER INPUTS
      %fname = "C:\Users\HuntR\Aero Undergrad\FA26\Senior Projects\ONEWEB_0023_2024-11-15_18-50-16_cut.txt";
     % % --- Sensor & Optics Settings ---
-     nx = 2560;  ny = 2560; % pixels 
+     % nx = 2560;  ny = 2560; % pixels 
      zeroIndexed = false;
     
     % fname = "..\Event Data Simulation Model\synthetic_debris_events.txt";
-    %nx = 1280;  ny = 720;        % Match the grid size from your simulator (or 1280x720
+    nx = 2560;  ny = 2560;        % Match the grid size from your simulator (or 1280x720
     %zeroIndexed = false;      % Simulator outputs 1-based MATLAB coordinates (1 to nx)
     
     if isstring(fname); fname = convertStringsToChars(fname); end
@@ -46,14 +46,17 @@ function results = AngularRateFun(fname)
     
     %% 3. EXECUTE UNIFIED ANGULAR RATE PIPELINE
     % Runs the coarse tracker, fine tracker, kinematic solver, console report, and plot generation
-    results = analyze_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerBin, clipSigma, minResid, tStart);
+    results = analyze_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerBin, clipSigma, minResid, runtype);
 
-    fprintf('Elapsed: %.1f s\n', toc(tStart));
-    if results
-        fprintf('Detected state\n');
-    elseif ~results
-        fprintf('Did not detect state\n');
-    end
+    % tStop = toc(tStart);
+    % results.tStop = tStop;
+    % fprintf('Elapsed: %.1f s\n', tStop);
+
+    % if results
+    %     fprintf('Detected state\n');
+    % else
+    %     fprintf('Did not detect state\n');
+    % end
 
 end
 
@@ -61,7 +64,7 @@ end
 %               UNIFIED ANGULAR RATE FUNCTION
 % ========================================================================
 
-function results = analyze_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerBin, clipSigma, minResid, tStart)
+function results = analyze_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerBin, clipSigma, minResid, runtype)
     
     % ==========================================
     % PHASE 1: KINEMATIC SOLVING
@@ -85,37 +88,38 @@ function results = analyze_angular_rate(t, x, y, cfg, IFOV_rad, dtCoarse, pxPerB
 
     if size(trk,1)<5
         results = 0;
-    else
+        return;
+    elseif strcmp(runtype,"detection")
         results = 1;
+        return;
     end
     
-    
     % Extract the final, highly-accurate timeline and sub-pixel coordinates
-    % tt = trk(:,1);  xs = trk(:,2);  ys = trk(:,3);
-    % [px, py, keep, res] = robust_line_fit(tt, xs, ys, clipSigma, minResid);
-    % 
-    % % Calculate the standard error of the fitted line slope
-    % tk  = tt(keep);  nk = numel(tk);
-    % Stt = sum((tk-mean(tk)).^2);
-    % sx  = sqrt(sum((xs(keep)-polyval(px,tk)).^2)/(nk-2))/sqrt(Stt);   
-    % sy  = sqrt(sum((ys(keep)-polyval(py,tk)).^2)/(nk-2))/sqrt(Stt);
-    % 
-    % % Convert the final pixel velocities into real-world Angular Rates
-    % vx = px(1);  vy = py(1);  vmag = hypot(vx,vy);                    
-    % rad2as = 180/pi*3600;
-    % 
-    % % Package deliverables into a single results structure
-    % results.w_x = IFOV_rad*vx*rad2as;   
-    % results.w_y = IFOV_rad*vy*rad2as;             
-    % results.w   = IFOV_rad*vmag*rad2as;
-    % results.sw  = IFOV_rad*sqrt((vx*sx)^2 + (vy*sy)^2)/vmag*rad2as;
-    % results.heading = atan2d(vy,vx);           
-    % results.vx = vx; results.vy = vy; results.vmag = vmag;
-    % results.sx = sx; results.sy = sy;
-    % results.dtFine = dtFine; results.IFOV = IFOV_rad*rad2as;
-    % 
-    % ik = find(keep);  i0 = ik(1);  i1 = ik(end);
-    % results.w2pt = IFOV_rad*hypot(xs(i1)-xs(i0), ys(i1)-ys(i0))/(tt(i1)-tt(i0))*rad2as;
+    tt = trk(:,1);  xs = trk(:,2);  ys = trk(:,3);
+    [px, py, keep, ~] = robust_line_fit(tt, xs, ys, clipSigma, minResid);
+
+    % Calculate the standard error of the fitted line slope
+    tk  = tt(keep);  nk = numel(tk);
+    Stt = sum((tk-mean(tk)).^2);
+    sx  = sqrt(sum((xs(keep)-polyval(px,tk)).^2)/(nk-2))/sqrt(Stt);   
+    sy  = sqrt(sum((ys(keep)-polyval(py,tk)).^2)/(nk-2))/sqrt(Stt);
+
+    % Convert the final pixel velocities into real-world Angular Rates
+    vx = px(1);  vy = py(1);  vmag = hypot(vx,vy);                    
+    rad2as = 180/pi*3600;
+
+    % Package deliverables into a single results structure
+    results.w_x = IFOV_rad*vx*rad2as;   
+    results.w_y = IFOV_rad*vy*rad2as;             
+    results.w   = IFOV_rad*vmag*rad2as;
+    results.sw  = IFOV_rad*sqrt((vx*sx)^2 + (vy*sy)^2)/vmag*rad2as;
+    results.heading = atan2d(vy,vx);           
+    results.vx = vx; results.vy = vy; results.vmag = vmag;
+    results.sx = sx; results.sy = sy;
+    results.dtFine = dtFine; results.IFOV = IFOV_rad*rad2as;
+
+    ik = find(keep);  i0 = ik(1);  i1 = ik(end);
+    results.w2pt = IFOV_rad*hypot(xs(i1)-xs(i0), ys(i1)-ys(i0))/(tt(i1)-tt(i0))*rad2as;
     % 
     % % ==========================================
     % % PHASE 2: CONSOLE REPORTING
