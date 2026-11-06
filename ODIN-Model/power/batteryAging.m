@@ -30,8 +30,8 @@ b.q = s.q; % b.q: 1 x N capacity over its start-of-life value
 b.r = s.r; % b.r: 1 x N resistance over its start-of-life value
 b.dod = s.dod; % b.dod: 1 x N depth of discharge per eclipse, share of the remaining capacity
 
-% Lowest state of charge, usable-energy basis, 1 - E_draw (1 + kR (r - 1))/(q E):
-b.socMin = 1 - b.eDraw*(1 + b.kR*(b.r - 1))./(b.q*c.energy); % b.socMin: 1 x N lowest state of charge in the eclipse
+% Lowest state of charge, share of full charge (the energy held at the top of charge), 1 - E_draw (1 + kR (r - 1))/(q E socTop):
+b.socMin = 1 - b.eDraw*(1 + b.kR*(b.r - 1))./(b.q*c.energy*c.socTop); % b.socMin: 1 x N lowest state of charge in the eclipse, share of full charge
 
 b.qEOL = b.q(end); % b.qEOL: capacity at the end of the mission over its start-of-life value
 b.rEOL = b.r(end); % b.rEOL: resistance at the end of the mission over its start-of-life value

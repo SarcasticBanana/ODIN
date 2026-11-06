@@ -1,5 +1,5 @@
 function dxdt = eom(t, x, cfg)
-% eom: state derivative for ode45 under two-body gravity plus J2 and atmospheric drag.
+% eom: state derivative for ode45 under two-body gravity plus J2, atmospheric drag and solar radiation pressure.
 % t: time elapsed [s]
 % x: state vector [rx; ry; rz; vx; vy; vz] in ECI [km; km/s]
 % cfg: parameter struct from config.m
@@ -18,6 +18,10 @@ end
 
 if cfg.use.drag
     a = a + accelDrag(t, r, v, cfg);
+end
+
+if cfg.use.srp
+    a = a + accelSRP(t, r, cfg);
 end
 
 dxdt = [v; a];
@@ -73,5 +77,33 @@ vRel = v - cfg.wE * [-r(2); r(1); 0]; % vRel: velocity relative to the atmospher
 
 % Drag acceleration, 1e3 converting (kg/m^3)(m^2/kg)(km/s)^2 to km/s^2:
 aD = -0.5e3 * rho * cfg.drag.Cd * cfg.drag.area / cfg.drag.mass * norm(vRel) * vRel;
+
+end
+
+
+function aS = accelSRP(t, r, cfg)
+% accelSRP: perturbing acceleration from solar radiation pressure on a sphere, the spherical model of STK.
+% t: time elapsed [s]
+% r: position vector in ECI [km]
+% cfg: parameter struct from config.m
+% aS: solar radiation pressure acceleration in ECI [km/s^2]
+
+rsun = sunVector(t, cfg); % rsun: Sun position in ECI [km]
+d = rsun - r; % d: spacecraft to Sun vector [km]
+dn = norm(d); % dn: spacecraft to Sun distance [km]
+sh = rsun/norm(rsun); % sh: unit vector from the Earth centre to the Sun
+along = dot(r, sh); % along: component of r along the Sun line [km]
+
+% Earth shadow from shadow.m only behind the Earth and inside the penumbra cone, whose radius grows from cfg.Re by
+% (cfg.Rsun + cfg.Re)/AU, under 0.005 km per km behind the Earth; everywhere else the whole Sun disk shows:
+if along < 0 && norm(r - along*sh) < 1.01*cfg.Re - 0.01*along
+    K = shadow(r, rsun, cfg); % K: visible fraction of the solar disk, 0 in umbra and 1 in full sunlight
+else
+    K = 1;
+end
+
+% Spherical model, a = -Cr A K S0/(m c R_AU^2) s_hat with R_AU the distance in AU and s_hat the unit vector to the Sun,
+% 1e-3 converting (W/m^2)(m^2)/(kg m/s) = m/s^2 to km/s^2:
+aS = -1e-3 * cfg.srp.Cr * cfg.srp.area * K * cfg.S0 / (cfg.drag.mass * cfg.c * (dn/cfg.AU)^2) * d/dn;
 
 end

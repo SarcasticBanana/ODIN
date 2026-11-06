@@ -60,6 +60,7 @@ name = {'low', 'moderate', 'high'}; % name: ECSS activity level of each case
 cA = base; % cA: plane 1 without drag
 cA.use.eclipse = false;
 cA.use.drag = false;
+cA.use.srp = false; % drag only, as in dragDecay.m
 
 % Kepler's third law:
 T = 2*pi*sqrt((cA.Re + cA.h)^3/cA.mu); % T: orbital period [s]

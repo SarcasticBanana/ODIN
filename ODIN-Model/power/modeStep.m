@@ -1,11 +1,11 @@
 function [soc, mode] = modeStep(soc, mode, pArr, dt, cfg)
 % modeStep: battery state of charge and operating mode one step later, array power held over the step, loads and thresholds from the Operating modes section.
-% soc: state of charge at the start of the step, share of rated capacity
+% soc: state of charge at the start of the step, share of full charge (the energy held at cfg.batt.socTop)
 % mode: operating mode at the start of the step, 1 Nominal, 2 Raven, 3 Safe
 % pArr: array power at the bus over the step [W]
 % dt: step length [s]
 % cfg: parameter struct from config.m
-% soc: state of charge at the end of the step, share of rated capacity
+% soc: state of charge at the end of the step, share of full charge
 % mode: operating mode at the end of the step
 
 pLoad = [cfg.modes.pNominal, cfg.modes.pRaven, cfg.modes.pSafe]; % pLoad: bus load of each mode [W]
@@ -18,8 +18,11 @@ else
     dE = pBat/cfg.batt.etaDis*dt/3600;
 end
 
-% Charge held between empty and the top of charge:
-soc = min(max(soc + dE/cfg.batt.energy, 0), cfg.batt.socTop);
+% Full charge, the rated energy up to the top of charge:
+eFull = cfg.batt.energy*cfg.batt.socTop; % eFull: battery energy at full charge [Wh]
+
+% Charge held between empty and full:
+soc = min(max(soc + dE/eFull, 0), 1);
 
 % Ladder down Nominal, Raven, Safe below socRaven and socSafe, up Safe to Raven above socRaven and Raven to Nominal above socNominal:
 if mode == 1 && soc < cfg.modes.socRaven

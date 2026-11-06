@@ -110,6 +110,8 @@ r1 = tradeLighting(1/24, 1); % r1: case A parameters from tradeLighting.m, one h
 cfgA = r1.cfg; % cfgA: case A parameter struct, spacecraft set to m/(Cd A) = 30 kg/m^2 as in the high-fidelity run
 cfgA.drag.model = 'J77';
 cfgA.use.eclipse = false;
+cfgA.use.drag = false; % drag off for the drag-free run whatever the Inputs sheet holds
+cfgA.use.srp = false; % drag only, as in the high-fidelity comparison
 cfgA.drag.F107 = 150;
 cfgA.drag.mass = 30;
 cfgA.drag.area = 1;

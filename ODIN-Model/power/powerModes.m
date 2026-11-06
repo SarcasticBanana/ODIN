@@ -20,7 +20,7 @@ p = r.params; % p: arrayPower parameters, end-of-life factor from the sheet incl
 
 S = solarFlux(out, cfg); % S: 1 x N sunlight on a surface held normal to the Sun [W/m^2]
 
-pm.soc = cfg.batt.socTop*ones(1, N); % pm.soc: 1 x N state of charge, share of rated capacity
+pm.soc = ones(1, N); % pm.soc: 1 x N state of charge, share of full charge (the energy held at cfg.batt.socTop)
 pm.mode = ones(1, N); % pm.mode: 1 x N operating mode, 1 Nominal, 2 Raven, 3 Safe
 pm.pArr = zeros(1, N); % pm.pArr: 1 x N array power at the bus, at the tilt of the step from each sample [W]
 pm.T = (p.initialTemperature_C + 273.15)*ones(1, N); % pm.T: 1 x N panel temperature, arrayPower's starting value first [K]

@@ -25,7 +25,7 @@ for i = 1:numel(tilt)
     c1 = max(cosd(tilt(i)), 0); % c1: share of the sunlight on the front face in a window
 
     for j = 1:numel(D)
-        soc = cfg.batt.socTop*ones(1, N); % soc: 1 x N state of charge, share of rated capacity
+        soc = ones(1, N); % soc: 1 x N state of charge, share of full charge (the energy held at cfg.batt.socTop)
         mode = ones(1, N); % mode: 1 x N operating mode, 1 Nominal, 2 Raven, 3 Safe
         th = cfg.slew.tiltSun*ones(1, N); % th: 1 x N panel tilt from the Sun over the step from each sample [deg]
         pa = zeros(1, N); % pa: 1 x N array power at the bus, at the tilt of the step from each sample [W]
@@ -36,7 +36,7 @@ for i = 1:numel(tilt)
         on = false; % on: true while a window runs
 
         for k = 1:N-1
-            if ~on && mode(k) == 1 && soc(k) >= cfg.batt.socTop
+            if ~on && mode(k) == 1 && soc(k) >= 1
                 on = true;
                 t0(end+1) = out.t(k);
             end
@@ -66,9 +66,9 @@ for i = 1:numel(tilt)
             cut(end+1) = false;
         end
 
-        rec = NaN(1, numel(t1)); % rec: time from each window stop back to the top of charge, NaN if not within the run [s]
+        rec = NaN(1, numel(t1)); % rec: time from each window stop back to full charge, NaN if not within the run [s]
         for q = 1:numel(t1)
-            kq = find(out.t >= t1(q) & soc >= cfg.batt.socTop, 1); % kq: first sample at the top of charge after the stop
+            kq = find(out.t >= t1(q) & soc >= 1, 1); % kq: first sample at full charge after the stop
             if ~isempty(kq)
                 rec(q) = out.t(kq) - t1(q);
             end
@@ -81,9 +81,9 @@ for i = 1:numel(tilt)
         fr(i, j).t0 = t0; % fr.t0: window starts [s]
         fr(i, j).t1 = t1; % fr.t1: window stops [s]
         fr(i, j).cut = cut; % fr.cut: windows stopped early by a drop out of Nominal
-        fr(i, j).rec = rec; % fr.rec: time from each window stop back to the top of charge [s]
+        fr(i, j).rec = rec; % fr.rec: time from each window stop back to full charge [s]
         fr(i, j).perDay = nnz(done)/days; % fr.perDay: windows run for their full length per day
-        fr(i, j).socMin = min(soc); % fr.socMin: lowest state of charge, share of rated capacity
+        fr(i, j).socMin = min(soc); % fr.socMin: lowest state of charge, share of full charge
         fr(i, j).tMode = accumarray(mode(1:N-1).', diff(out.t).', [3 1]).'; % fr.tMode: 1 x 3 time in Nominal, Raven and Safe [s]
         fr(i, j).soc = soc; % fr.soc: 1 x N state of charge
         fr(i, j).mode = mode; % fr.mode: 1 x N operating mode
