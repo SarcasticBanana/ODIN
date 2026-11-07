@@ -1,5 +1,5 @@
 function dxdt = eom(t, x, cfg)
-% eom: state derivative for ode45 under two-body gravity plus J2 and atmospheric drag.
+% eom: state derivative for ode45 under two-body gravity plus J2, atmospheric drag and solar radiation pressure.
 % t: time elapsed [s]
 % x: state vector [rx; ry; rz; vx; vy; vz] in ECI [km; km/s]
 % cfg: parameter struct from config.m
@@ -17,7 +17,11 @@ if cfg.use.J2
 end
 
 if cfg.use.drag
-    a = a + accelDrag(r, v, cfg);
+    a = a + accelDrag(t, r, v, cfg);
+end
+
+if cfg.use.srp
+    a = a + accelSRP(t, r, cfg);
 end
 
 dxdt = [v; a];
@@ -49,21 +53,22 @@ aJ2 = k * [ x * (1 - 5*zr2)
 end
 
 
-function aD = accelDrag(r, v, cfg)
-% accelDrag: perturbing acceleration from drag in a J77 atmosphere rotating with the Earth.
+function aD = accelDrag(t, r, v, cfg)
+% accelDrag: perturbing acceleration from drag in an atmosphere rotating with the Earth, density from dragDensity.m.
+% t: time elapsed [s]
 % r: position vector in ECI [km]
 % v: velocity vector in ECI [km/s]
-% cfg: parameter struct from config.m, with cfg.drag.logRho set by propagate.m
+% cfg: parameter struct from config.m, with cfg.drag.logRho set by propagate.m for J77
 % aD: drag acceleration in ECI [km/s^2]
 
-rn = norm(r); % rn: orbital radius [km]
-
-% Height above the WGS84 ellipsoid, first order in flattening:
-h = rn - cfg.Re * (1 - cfg.f * (r(3)/rn)^2); % h: height above the ellipsoid [km]
-
-rho = exp(cfg.drag.logRho(h)); % rho: J77 mass density [kg/m^3]
+rho = dragDensity(t, r, cfg); % rho: mass density [kg/m^3]
 
 if isnan(rho)
+    rn = norm(r); % rn: orbital radius [km]
+
+    % Height above the WGS84 ellipsoid, first order in flattening:
+    h = rn - cfg.Re * (1 - cfg.f * (r(3)/rn)^2); % h: height above the ellipsoid [km]
+
     error('eom:dragHeight', 'height %.1f km is outside the J77 density table', h);
 end
 
@@ -72,5 +77,33 @@ vRel = v - cfg.wE * [-r(2); r(1); 0]; % vRel: velocity relative to the atmospher
 
 % Drag acceleration, 1e3 converting (kg/m^3)(m^2/kg)(km/s)^2 to km/s^2:
 aD = -0.5e3 * rho * cfg.drag.Cd * cfg.drag.area / cfg.drag.mass * norm(vRel) * vRel;
+
+end
+
+
+function aS = accelSRP(t, r, cfg)
+% accelSRP: perturbing acceleration from solar radiation pressure on a sphere, the spherical model of STK.
+% t: time elapsed [s]
+% r: position vector in ECI [km]
+% cfg: parameter struct from config.m
+% aS: solar radiation pressure acceleration in ECI [km/s^2]
+
+rsun = sunVector(t, cfg); % rsun: Sun position in ECI [km]
+d = rsun - r; % d: spacecraft to Sun vector [km]
+dn = norm(d); % dn: spacecraft to Sun distance [km]
+sh = rsun/norm(rsun); % sh: unit vector from the Earth centre to the Sun
+along = dot(r, sh); % along: component of r along the Sun line [km]
+
+% Earth shadow from shadow.m only behind the Earth and inside the penumbra cone, whose radius grows from cfg.Re by
+% (cfg.Rsun + cfg.Re)/AU, under 0.005 km per km behind the Earth; everywhere else the whole Sun disk shows:
+if along < 0 && norm(r - along*sh) < 1.01*cfg.Re - 0.01*along
+    K = shadow(r, rsun, cfg); % K: visible fraction of the solar disk, 0 in umbra and 1 in full sunlight
+else
+    K = 1;
+end
+
+% Spherical model, a = -Cr A K S0/(m c R_AU^2) s_hat with R_AU the distance in AU and s_hat the unit vector to the Sun,
+% 1e-3 converting (W/m^2)(m^2)/(kg m/s) = m/s^2 to km/s^2:
+aS = -1e-3 * cfg.srp.Cr * cfg.srp.area * K * cfg.S0 / (cfg.drag.mass * cfg.c * (dn/cfg.AU)^2) * d/dn;
 
 end

@@ -23,6 +23,7 @@ diary(logFile);
 
 ok = true(1, 6); % ok: pass flag of checks 1 to 6
 base = config(); % base: parameter struct from config.m
+base.drag.model = 'J77';
 
 Fbar = [70 100 150 200 250 300]; % Fbar: 81-day mean 10.7 cm flux of J77 Table 5 [sfu]
 Ttab = [720.9 860.5 1057.2 1227.4 1380.7 1522.2]; % Ttab: J77 Table 5 exospheric temperature [K]
@@ -107,7 +108,10 @@ fprintf('4. drag acceleration from eom.m against SI units at %.1f km: relative d
 
 r1 = tradeLighting(1/24, 1); % r1: case A parameters from tradeLighting.m, one hour run
 cfgA = r1.cfg; % cfgA: case A parameter struct, spacecraft set to m/(Cd A) = 30 kg/m^2 as in the high-fidelity run
+cfgA.drag.model = 'J77';
 cfgA.use.eclipse = false;
+cfgA.use.drag = false; % drag off for the drag-free run whatever the Inputs sheet holds
+cfgA.use.srp = false; % drag only, as in the high-fidelity comparison
 cfgA.drag.F107 = 150;
 cfgA.drag.mass = 30;
 cfgA.drag.area = 1;

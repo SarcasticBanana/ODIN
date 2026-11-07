@@ -5,21 +5,25 @@ odinPath;
 
 cfg = config();
 cfg.h = 600;                  % Your chosen altitude [km]
-cfg.ode.dtOut = 1*60;
-nOrbit = 15; % change this for 10 day sim
+nOrbit = 2;
 out = propagate(cfg, nOrbit);     % Ale's orbit calculation
 N = length(out.t);
 
-phase_type = "Calibrate"; % Phase 1 = "Calibrate", Phase 2 = "Nominal"
+lat = sign(out.r(3,:)) .* acosd(vecnorm(out.r(1:2,:)) ./ vecnorm(out.r));
+% figure; plot(out.t,lat);
 
-% [rate_per_s,details] = debrisDetectionRate(out.t,out.r',out.v',vecnorm(out.r)'-cfg.Re,cfg,out.rsun');
-% debrisRate = ones(1,N)*details.TotalRate_per_s;
+debrisRateCoeff = 1; % guess
+dataPerDebris = 1e6; % 1 Mb, guess
+DLIntervals = [out.T*(0:nOrbit);out.T*(0:nOrbit)+out.T/10];
+K_DL = 1e4; % 1 Mbps, guess
+R_GNC = 100; % 100 b/s, guess
+R_EPS = 100;
+R_Struct = 10; % 10 b/s, guess
+pi_c = 5; % compression ratio, guess
 
-load('debrisRates.mat');
-debrisT = xData;
-debrisRates = yData;
-debrisRates = debrisRates(out.t<=out.T);
-debrisRate = repmat(debrisRates,1,nOrbit);
+opts = odeset('NonNegative',1,'MaxStep',10);
+[tout,Dout] = ode45(@(t,D) dataTime(t,D,debrisRateCoeff,out.t,lat,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c), ...
+    [0, out.t(end)],[0; 0],opts);
 
 noiseSamples = load('model/Payload Models/Event Data Simulation Model/eventSamplesNoise.mat');
 dataRateTimes = noiseSamples.tspost;
@@ -68,95 +72,41 @@ end
 
 DLIdx = any(cell2mat(arrayfun(@(i) tout>=DLIntervals(1,i) & tout<=DLIntervals(2,i),1:length(DLIntervals),'UniformOutput',false))');
 
-% R_payload =  dataRates .* double(~DLIdx);
-% 
-% % only downlink data that you can downlink
-K_DLmin = min(Dout(:,1) + 1/pi_cAvg*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
-% 
-% dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
+R_payload = debrisRates * dataPerDebris .* double(~DLIdx);
 
-disp(['Max Data Stored: ',num2str(max(Dout(:,1))/1e9),'Gb = ',num2str(max(Dout(:,1))/8e9),'GB of data!']);
-totDownlinked = trapz(tout,K_DLmin)*pi_cAvg;
-disp(['Downlinked ',num2str(totDownlinked/1e9),'Gb = ',num2str(totDownlinked/8e9),'GB of data!']);
+% only downlink data that you can downlink
+K_DLmin = min(Dout(:,1) + 1/pi_c*(R_GNC+R_EPS+R_Struct),K_DL)' .* double(DLIdx); 
+
+dDdt = 1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
 
 figure; hold on;
-plot(tout/24/3600,Dout(:,1)/1e9);
-ylabel("Data Stored (Gb)");
-% yline(16*8-0.5*8)
-% yline(storage_cap/1e9, '-b');
-% yyaxis('right');
-% plot(tout,dDdt,'r','LineWidth',2);
-% yline(0,'r--');
-% xline(out.T*(1:nOrbit),'k--');
-% xline(24*3600*(1:out.t(end)/(24*3600)));
-xlim([0 out.t(end)/24/3600])
-% ylabel("Total Data Rate (Bits/s)");
-xlabel("Time (days)");
+plot(tout,Dout(:,1),'b','LineWidth',2);
+ylabel("Data Stored (Bits)");
+yyaxis('right');
+plot(tout,dDdt,'r','LineWidth',2);
+ylabel("Total Data Rate (Bits/s)");
+xlabel("Time (s)");
 box on; grid on;
-ax = gca;
-% ax.YAxis(1).Color = [0 0 1];
-% ax.YAxis(2).Color = [1 0 0];
 
-function status = odeOutput(t,D,flag)
-    global eventHappening tEvent
-    if isempty(flag)
-        % if ~eventHappening && length(t)>1
-        %     % debrisRate = interp1(oldTime,debrisRate,t(end));
-        %     debrisRate = 1.98e-3; % assume const avg debris rate
-        %     dt = t(end)-t(1);
-        %     % pEvent = exp(-debrisRate)*debrisRate^(dt);
-        %     pEvent = debrisRate*dt*exp(-debrisRate*dt);
-        %     eventHappening = rand(1)<pEvent;
-        %     if eventHappening
-        %         % disp(['probability of event happening in ',num2str(dt),' is ',num2str(pEvent)]);
-        %         tEvent = t(end);
-        %         disp(['time %: ',num2str(t(end)/870180*100)]);
-        %     end
-        % elseif eventHappening && (t(end)-tEvent)>randn(1)*5+8
-        %     eventHappening = 0;
-        % end
-        if any(isapprox(t(end)/870180,0.001:0.001:1,'loose'))
-            disp(['time %: ',num2str(t(end)/870180*100)]);
-        end
-        status = 0;
-    end
+function y = normpdf(x,mu,sigma)
+    y = 1/(sigma*sqrt(2*pi)) * exp(-(x-mu).^2/(2*sigma^2));
 end
 
-function dDdt = dataTime(t,D,phase_type,dataRateTimes,dataRates,DLIntervals,K_DL,R_GNC,R_EPS,R_Struct,pi_c,storage_cap)
-    global eventHappening
+function dDdt = dataTime(t,D,debrisRateCoeff,oldTime,lat,DLIntervals,dataPerDebris,K_DL,R_GNC,R_EPS,R_Struct,pi_c)
+    debrisRates = debrisRateCoeff*normpdf(interp1(oldTime,lat,t),0,90); % events/second
 
     DLIdx = any(arrayfun(@(i) t>=DLIntervals(1,i) & t<=DLIntervals(2,i),1:length(DLIntervals)));
-    ObservingIdx = ~any(arrayfun(@(i) t>=DLIntervals(1,i)-300 & t<=DLIntervals(2,i)+300,1:length(DLIntervals)));
 
-    % if D(1)>=storage_cap
-    %     downlinking = 1;
-    % elseif downlinking && D(1)<10
-    %     downlinking = 0;
+    R_payload = debrisRates * dataPerDebris * double(~DLIdx);
+
+    % only downlink data that you can downlink
+    K_DLmin = min(D(1) + 1/pi_c*(R_GNC+R_EPS+R_Struct),K_DL) * double(DLIdx);
+
+    % disp(num2str(t));
+
+    % if t>5797
+    %     keyboard;
     % end
-
-    if strcmpi(phase_type,"Calibrate")
-        if t>max(dataRateTimes)
-            dataRate = 15e6;
-        else
-            dataRate = interp1(dataRateTimes,dataRates,t,'linear','extrap');
-        end
-        R_payload = dataRate*double(ObservingIdx); % for calibration
-    elseif strcmpi(phase_type,"Nominal")
-        if t>max(dataRateTimes)
-            dataRate = 15e6;
-        else
-            dataRate = interp1(dataRateTimes,dataRates,t,'linear','extrap');
-        end
-        R_payload = dataRate * double(ObservingIdx) * double(eventHappening);
-    end
-
-    % if D(1) >= storage_cap
-    %     R_payload = 0; % Storage is full, camera is stopped.
-    % end
-
-    thisPi_c = pi_c(1);
-    K_DLmin = min(D(1) + 1/thisPi_c*(R_GNC + R_EPS + R_Struct),K_DL) * double(DLIdx); % only downlink data that you can downlink for min bound
-
-    dDdt = [1/thisPi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
+    dDdt = [1/pi_c*(R_payload+R_GNC+R_EPS+R_Struct) - K_DLmin;
             0];
 end

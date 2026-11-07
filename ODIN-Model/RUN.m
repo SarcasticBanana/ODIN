@@ -1,4 +1,4 @@
-% RUN: the ODIN constellation over nDay days, orbit, shadow, array power, ground track and downlink figures, the contact table, downlink times in seconds, then the 3D viewer.
+% RUN: the ODIN constellation over nDay days, orbit, shadow, array power, battery and operating mode, observation slew, ground track and downlink figures, the contact table, downlink times in seconds, drag decay over the mission at ECSS low, moderate and high solar activity with the day and night density, then the 3D viewer.
 
 clear; close all; clc;
 
@@ -10,6 +10,8 @@ nDay = 7; % nDay: run length [days]
 nView = 24; % nView: 3D viewer scenario length [h]
 nOrbP = 10; % nOrbP: orbits of ODIN 1.1 given to arrayPower
 capMin = 120; % capMin: downlink time per satellite per day in the battery trade [min]
+slewMin = [30 45 60]; % slewMin: observation window lengths [min]
+tiltMax = 90; % tiltMax: worst-case window tilt from the Sun, ADCS [deg]
 outDir = fullfile(here, 'results'); % outDir: folder for the contact table
 if ~isfolder(outDir)
     mkdir(outDir);
@@ -162,6 +164,64 @@ if base.use.eclipse
     % ar: area study and incidence sweep at cfg.power.panelArea from arrayPower.m
     fprintf('array at %g m^2, %d orbits of %s, normal Sun: peak %.2f W, window average %.2f W at the bus, ageing allowance included\n', ...
             base.power.panelArea, nOrbP, names{1}, ar.summary.PeakPlanning_W, ar.summary.WindowAvgPlanning_W);
+
+    pm = powerModes(out{1}, cfgs(1)); % pm: battery charge and operating mode of ODIN 1.1 pointing at the Sun
+
+    cW = base; % cW: battery sizing orbit, cfg.batt.h with the Sun in the orbit plane
+    cW.h = base.batt.h;
+
+    % Noon ascending node, RAAN at the mean Sun right ascension at sim start as in tradeLighting.m:
+    cW.raan0 = mod(280.460 + 36000.771*(jd0 - 2451545.0)/36525, 360);
+
+    % Kepler's third law:
+    TW = 2*pi*sqrt((cW.Re + cW.h)^3/cW.mu); % TW: period of the battery sizing orbit [s]
+
+    outW = propagate(cW, (nDay*86400 + 1)/TW); % outW: state history of the battery sizing orbit
+    pmW = powerModes(outW, cW); % pmW: battery charge and operating mode in the battery sizing orbit pointing at the Sun
+
+    tilts = [base.slew.tilt, tiltMax]; % tilts: window tilts from the Sun [deg]
+    fr = {slewFrequency(out{1}, cfgs(1), slewMin, tilts), slewFrequency(outW, cW, slewMin, tilts)};
+    % fr: slewFrequency results of ODIN 1.1 and of the battery sizing orbit
+    frName = {names{1}, sprintf('%g km, Sun in plane', cW.h)}; % frName: label of each orbit
+
+    fprintf('\npointing at the Sun, loads %g, %g and %g W in Nominal, Raven and Safe:\n', base.modes.pNominal, base.modes.pRaven, base.modes.pSafe);
+    fprintf('  %-20s lowest charge %5.1f%%, hours in Nominal, Raven, Safe %s\n', frName{1}, 100*min(pm.soc), mat2str(round(pm.tMode/360)/10));
+    fprintf('  %-20s lowest charge %5.1f%%, hours in Nominal, Raven, Safe %s\n', frName{2}, 100*min(pmW.soc), mat2str(round(pmW.tMode/360)/10));
+
+    fprintf('\nobservation windows, each started once the battery is back at the top of charge in Nominal, then full Sun:\n');
+    fprintf('%-20s %6s %7s %8s %10s %10s %9s %8s %5s\n', 'orbit', 'tilt', 'window', 'windows', 'recovery', 'recovery', 'not back', 'lowest', 'cut');
+    fprintf('%-20s %6s %7s %8s %10s %10s %9s %8s %5s\n', '', '[deg]', '[min]', 'per day', 'median', 'longest', 'by end', 'charge', 'short');
+    for o = 1:2
+        for i = 1:numel(tilts)
+            for j = 1:numel(slewMin)
+                f = fr{o}(i, j); % f: one case of slewFrequency
+                fprintf('%-20s %6.1f %7d %8.2f %10.1f %10.1f %9d %7.1f%% %5d\n', frName{o}, f.tilt, f.D, f.perDay, ...
+                        median(f.rec(~isnan(f.rec)))/60, max([f.rec, NaN])/60, nnz(isnan(f.rec)), 100*f.socMin, nnz(f.cut));
+            end
+        end
+    end
+
+    figure('Color', 'w', 'Name', 'Power modes', 'Position', [140 60 1000 700]);
+    thr = 100*[base.modes.socNominal, base.modes.socRaven, base.modes.socSafe]; % thr: mode thresholds [%]
+    ax = subplot(2, 1, 1);
+    hold(ax, 'on'); grid(ax, 'on');
+    plot(ax, ps.t, 100*pm.soc, 'Color', c(1,:), 'LineWidth', 1.2);
+    plot(ax, ps.t, 100*pmW.soc, 'Color', [0.35 0.35 0.35], 'LineWidth', 1.2);
+    plot(ax, ps.t([1 end]), [thr; thr], 'k--');
+    ylim(ax, [0 100]);
+    ylabel(ax, 'battery charge [%]');
+    title(ax, sprintf('pointing at the Sun, %s, dashed: Raven below %g%%, Safe below %g%%, Nominal again above %g%%', tag, thr(2), thr(3), thr(1)));
+    legend(ax, frName, 'Location', 'southwest');
+
+    ax = subplot(2, 1, 2);
+    hold(ax, 'on'); grid(ax, 'on');
+    plot(ax, ps.t, 100*fr{1}(1, end).soc, 'Color', c(1,:), 'LineWidth', 1.2);
+    plot(ax, ps.t, 100*fr{2}(1, end).soc, 'Color', [0.35 0.35 0.35], 'LineWidth', 1.2);
+    plot(ax, ps.t([1 end]), [thr; thr], 'k--');
+    ylim(ax, [0 100]);
+    ylabel(ax, 'battery charge [%]'); xlabel(ax, sprintf('time [%s]', ps.tName));
+    title(ax, sprintf('%g min windows at %g deg from the Sun, each once the battery is full again', slewMin(end), tilts(1)));
+    legend(ax, frName, 'Location', 'southwest');
 end
 
 figure('Color', 'w', 'Name', 'Ground track', 'Position', [100 60 1100 620]);
@@ -297,6 +357,138 @@ for j = 1:nSat
         fprintf('  %8.2f  %8.1f', numel(dur)/(tEnd/86400), sum(dur)/60/(tEnd/86400));
     end
     fprintf('  %12.1f  %d of %d\n', sum(dayMin(:, j))/(tEnd/86400), nnz(dayMin(:, j) > capMin), nD);
+end
+
+F107 = [base.decay.F107Low, base.decay.F107Moderate, base.decay.F107High]; % F107: 10.7 cm solar flux of the ECSS low, moderate and high cases [sfu]
+Ap = [base.decay.ApLow, base.decay.ApModerate, base.decay.ApHigh]; % Ap: daily geomagnetic index of the same cases
+caseName = {'low', 'moderate', 'high'}; % caseName: ECSS activity level of each case
+caseCol = col([3 5 2], :); % caseCol: 3 x 3 colour of each case
+plStyle = {'-', '--', ':'}; % plStyle: line style of planes 1, 2 and 3
+nC = numel(F107); % nC: number of solar activity cases
+nPl = base.const.nPlanes; % nPl: number of orbit planes
+dec = cell(nC, nPl); % dec: decay of satellite k.1 in case i from dragDecay.m
+for i = 1:nC
+    for k = 1:nPl
+        cD = cfgs((k - 1)*nP + 1); % cD: parameter struct of satellite k.1 in case i
+        cD.drag.F107 = F107(i);
+        cD.drag.Ap = Ap(i);
+        dec{i, k} = dragDecay(cD, 365.25*base.power.years);
+    end
+end
+B = base.drag.mass/(base.drag.Cd*base.drag.area); % B: ballistic coefficient [kg/m^2]
+caseTxt = arrayfun(@(i) sprintf('ECSS %s, F10.7 %g, Ap %g', caseName{i}, F107(i), Ap(i)), 1:nC, 'UniformOutput', false);
+% caseTxt: legend text of each case
+
+figure('Color', 'w', 'Name', 'Drag decay', 'Position', [160 60 1000 700]);
+ax = subplot(2, 1, 1);
+hold(ax, 'on'); grid(ax, 'on');
+hD = gobjects(1, nC); % hD: line of plane 1 in each case, for the legend
+for i = 1:nC
+    for k = 1:nPl
+        hk = plot(ax, dec{i, k}.t/86400/365.25, dec{i, k}.h, plStyle{mod(k - 1, 3) + 1}, 'Color', caseCol(i,:), 'LineWidth', 1.2);
+        % hk: line of plane k in case i
+        if k == 1
+            hD(i) = hk;
+        end
+    end
+end
+plot(ax, [0 base.power.years], base.decay.hFloor*[1 1], 'k--');
+xlim(ax, [0 base.power.years]);
+ylabel(ax, 'semi-major axis less cfg.Re [km]');
+title(ax, sprintf('drag decay from %s, %s, m/(Cd A) = %.1f kg/m^2, solid, dashed, dotted: planes 1, 2, 3, dashed black: floor', ...
+                  datestr(datenum(base.epoch), 'yyyy-mm-dd'), base.drag.model, B));
+legend(ax, hD, caseTxt, 'Location', 'southwest');
+
+ax = subplot(2, 1, 2);
+hold(ax, 'on'); grid(ax, 'on');
+for i = 1:nC
+    for k = 1:nPl
+        plot(ax, dec{i, k}.t(2:end)/86400/365.25, dec{i, k}.h(1) - dec{i, k}.h(2:end), plStyle{mod(k - 1, 3) + 1}, ...
+             'Color', caseCol(i,:), 'LineWidth', 1.2);
+    end
+end
+set(ax, 'YScale', 'log');
+xlim(ax, [0 base.power.years]);
+ylabel(ax, 'height lost [km]'); xlabel(ax, 'time from sim start [yr]');
+title(ax, 'height lost since sim start, log scale');
+
+th0 = earthRotation(0, base); % th0: Greenwich angle at sim start [rad]
+ut0 = 3600*base.epoch(4) + 60*base.epoch(5) + base.epoch(6); % ut0: UTC time of day at sim start [s]
+lstG = 0:0.25:24; % lstG: local solar times around the equator [h]
+
+% Longitude where the local solar time is lstG at sim start, lst = UT/3600 + lon/15:
+lonG = deg2rad(15*lstG - ut0/240); % lonG: 1 x L longitudes [rad]
+
+% Earth fixed to model frame, rotation about z by the Greenwich angle:
+rG = (base.Re + base.h)*[cos(lonG + th0); sin(lonG + th0); zeros(size(lonG))]; % rG: 3 x L points on the equator at cfg.h in the model frame [km]
+
+% Local time of the ascending node of plane 1 at sim start, mean Sun as in the Orbits figure:
+ltan0 = mod(12 + (base.raan0 - (280.460 + 36000.771*(jd0 - 2451545.0)/36525))/15, 24); % ltan0: LTAN of plane 1 at sim start [h]
+
+q1 = out{1}.t <= out{1}.T; % q1: samples of the first orbit of ODIN 1.1
+t1 = out{1}.t(q1); % t1: 1 x M times of the first orbit [s]
+r1 = out{1}.r(:, q1); % r1: 3 x M positions of the first orbit [km]
+hn = out{1}.hvec(:, q1)./vecnorm(out{1}.hvec(:, q1)); % hn: 3 x M unit orbit normal
+nd = [-hn(2,:); hn(1,:); zeros(1, nnz(q1))]./hypot(hn(1,:), hn(2,:)); % nd: 3 x M unit vector to the ascending node
+
+% Argument of latitude, the angle from the node to r about the orbit normal:
+[u1, o1] = sort(mod(atan2d(dot(cross(nd, r1), hn), dot(nd, r1)), 360));
+% u1: 1 x M argument of latitude in increasing order [deg]
+% o1: order of the samples
+
+figure('Color', 'w', 'Name', 'Drag day and night', 'Position', [180 60 1000 700]);
+ax1 = subplot(2, 1, 1); % ax1: density around the equator
+hold(ax1, 'on'); grid(ax1, 'on');
+ax2 = subplot(2, 1, 2); % ax2: density around the first orbit
+hold(ax2, 'on'); grid(ax2, 'on');
+hN = gobjects(1, nC); % hN: NRLMSISE-00 line of each case, for the legend
+for i = 1:nC
+    cN = base; % cN: parameter struct of case i with NRLMSISE-00
+    cN.drag.model = 'NRLMSISE-00';
+    cN.drag.F107 = F107(i);
+    cN.drag.Ap = Ap(i);
+    cJ = cN; % cJ: the same case with J77
+    cJ.drag.model = 'J77';
+    cJ.drag.logRho = dragTable(cJ);
+    cO = cfgs(1); % cO: ODIN 1.1 in case i with the density model of the sheet
+    cO.drag.F107 = F107(i);
+    cO.drag.Ap = Ap(i);
+    cO.drag.logRho = cJ.drag.logRho;
+
+    hN(i) = plot(ax1, lstG, dragDensity(zeros(size(lstG)), rG, cN), '-', 'Color', caseCol(i,:), 'LineWidth', 1.2);
+    plot(ax1, lstG, dragDensity(zeros(size(lstG)), rG, cJ), ':', 'Color', caseCol(i,:), 'LineWidth', 1.2);
+    plot(ax2, u1, dragDensity(t1(o1), r1(:, o1), cO), '-', 'Color', caseCol(i,:), 'LineWidth', 1.2);
+    plot(ax2, u1, dragDensity(t1(o1), r1(:, o1), cJ), ':', 'Color', caseCol(i,:), 'LineWidth', 1.2);
+end
+set(ax1, 'YScale', 'log', 'XLim', [0 24], 'XTick', 0:3:24);
+yl = ylim(ax1); % yl: density range of the upper panel [kg/m^3]
+plot(ax1, ltan0*[1 1], yl, 'k--', mod(ltan0 + 12, 24)*[1 1], yl, 'k--');
+xlabel(ax1, 'local solar time [h]'); ylabel(ax1, 'density [kg/m^3]');
+title(ax1, sprintf('equator at %g km on %s, solid: NRLMSISE-00, dotted: J77, dashed: plane 1 node crossings', ...
+                   base.h, datestr(datenum(base.epoch), 'dd mmm yyyy')));
+legend(ax1, hN, caseTxt, 'Location', 'northeast');
+hm = @(x) sprintf('%02d:%02d', floor(round(60*x)/60), mod(round(60*x), 60)); % hm: hh:mm text of a time in hours
+set(ax2, 'YScale', 'log', 'XLim', [0 360], 'XTick', 0:90:360, ...
+    'XTickLabel', {['node ' hm(ltan0)], 'north', ['node ' hm(mod(ltan0 + 12, 24))], 'south', ''});
+xlabel(ax2, 'argument of latitude'); ylabel(ax2, 'density [kg/m^3]');
+title(ax2, sprintf('first orbit of ODIN 1.1, solid: %s, dotted: J77, local solar time at the nodes', base.drag.model));
+
+fprintf('\ndrag decay from %s UTC over %g years, density from %s, m/(Cd A) = %.1f kg/m^2, floor %g km:\n', ...
+        datestr(datenum(base.epoch), 'yyyy-mm-dd HH:MM'), base.power.years, base.drag.model, B, base.decay.hFloor);
+fprintf('%-9s %6s %4s %6s %11s %9s   %s\n', 'case', 'F10.7', 'Ap', 'plane', 'density', 'decay', ...
+        sprintf('semi-major axis less cfg.Re after 1, 2 and %g years, or the date it falls below the floor', base.power.years));
+fprintf('%-9s %6s %4s %6s %11s %9s\n', '', '[sfu]', '', '', '[kg/m^3]', '[m/day]');
+yrsAt = [1 2 base.power.years]; % yrsAt: report times [yr]
+for i = 1:nC
+    for k = 1:nPl
+        d = dec{i, k}; % d: decay of satellite k.1 in case i
+        hAt = interp1(d.t, d.h, 365.25*86400*yrsAt); % hAt: semi-major axis less cfg.Re at yrsAt, NaN after the floor [km]
+        txt = sprintf('%8.1f', hAt(~isnan(hAt))); % txt: heights reached before the floor [km]
+        if ~isnan(d.tFloor)
+            txt = sprintf('%s  below %g km on %s', txt, base.decay.hFloor, datestr(datenum(base.epoch) + d.tFloor/86400, 'yyyy-mm-dd'));
+        end
+        fprintf('%-9s %6g %4g %6d %11.3e %9.2f   %s\n', caseName{i}, F107(i), Ap(i), k, d.rho(1), -86400e3*d.dadt(1), txt);
+    end
 end
 
 scenarioDemo([], [], nView);
