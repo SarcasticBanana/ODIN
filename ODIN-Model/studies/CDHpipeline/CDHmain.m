@@ -23,7 +23,13 @@ debrisRate = repmat(debrisRates,1,nOrbit);
 
 noiseSamples = load('model/Payload Models/Event Data Simulation Model/eventSamplesNoise.mat');
 dataRateTimes = noiseSamples.tspost;
-dataRates = noiseSamples.dataRate64;
+dataRates = noiseSamples.dataRate16;
+% DRTimesInterp = linspace(0,max(dataRateTimes),100);
+% figure; hold on;
+% scatter(dataRateTimes,dataRates/1e6);
+% plot(DRTimesInterp,interp1(dataRateTimes,dataRates/1e6,DRTimesInterp,'linear','extrap'),'-');
+% xlabel('Time (s)'); ylabel('Data Rate (Mbps');
+% grid on; box on;
 
 st = stations();
 [dl,c] = downlinkTimes(out,cfg,st);
