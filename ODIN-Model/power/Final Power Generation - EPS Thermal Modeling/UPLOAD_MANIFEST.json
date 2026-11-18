@@ -1,0 +1,174 @@
+{
+  "repository": "SarcasticBanana/ODIN",
+  "destination": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/",
+  "files": [
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/arrayGeometry.m",
+      "sha256": "60977f4a437ea7314a15d3dd7f8bdaf042b5bf6a31a9be501589ab51a71edb8c"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/arrayPower.m",
+      "sha256": "202d3560299101464d1064a31b0d7708bff124b265bf1ff0e3bdc518a9e81ecb"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/batteryDischargeTrade.m",
+      "sha256": "8125ee50a2391cb9527d71aa8ca1e73f5b8535cebd42492d21c443237ed65929"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/BatteryThermalModel.m",
+      "sha256": "f1910aa966f1ee3a44dff6db91173d42bebae7425365ff1db5458033cfdcfff2"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/componentThermalOrbit.m",
+      "sha256": "a4fb73f7ac91c9b6477bd7b486271fe72cc810b69d4d50e618c3c7d6c802b153"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/config.m",
+      "sha256": "a7beb475d52169abbf72341505685fb72ac292bf726747552fdcedc7a3c3ce77"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/eclipseTimes.m",
+      "sha256": "ed3a41fb3fb7f7e2cdd8afb78fc94ae1b4ae28dfa725bbb18c073144e69d3c4c"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/eom.m",
+      "sha256": "aa88fa28385e0086c46e490a9e887e68312d4d45f1d02b58326db23a5780d8c8"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/fitFigureToScreen.m",
+      "sha256": "65293bdd4bee9671d27edd5bf03fbb7cf7c558c035ecc9694c4d4988add83a4f"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/modelSettings.m",
+      "sha256": "c01c839147c47bcd9e470e72137908042a6b95ad64af874880d5e021ac27906f"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/oe2rv.m",
+      "sha256": "eb83ef88dd18194e20b30bf5df520c7ab02e55cdc9a119970dc8636d92e098d1"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/panelEnvironment.m",
+      "sha256": "88a9609ed03298821273e31d9cf37b1efcba78778d407656e4713575c7557842"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/panelEnvironmentAt.m",
+      "sha256": "fd8423be8af83856a452759e26e3f30b114f0178c3b69aa12a72d5131b29a3bd"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/plotModelDiagnostics.m",
+      "sha256": "775cbff7fabe02b5de14861e287316db80450e13bbf1e9e05b2ed61619b6f3fc"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/PMADThermalModel.m",
+      "sha256": "3d1f712b20e4127dee3bb0b0df0c6a6e6bbdff6dd31b519f0d0176d197873a44"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/powerBalance.m",
+      "sha256": "198cf031dc86d0cc0e277fb5c135ab9cd61494ce4475e4f4ebb3b4980ce85acc"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/propagate.m",
+      "sha256": "78e55637bdf167b26ca0bca51e54e3d348850f241648102e13bbba7639a519f0"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/refineOrbit.m",
+      "sha256": "16b77bee2ed723e4b8f4bd3393bb1fda2a93c505618b2cb5dfad32f87cd82254"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/run.m",
+      "sha256": "6c77d15e0799f92b86fcfb0f2ae36381779cab1ba6df7c169ea26faaa4b02910"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/shadow.m",
+      "sha256": "62b7613712438cd47c420727009bf5490eb4daea5e11eb991d6159bb8cd4d00a"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/shadowGeometry.m",
+      "sha256": "7b74a092ddeab14de8e29a366649080ea93c45bed854346f8d13f271136ce432"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/solarArrayElectricalPower.m",
+      "sha256": "3ea5fb3e593ebf0c9f343b65830fe831dd98f0ab04bd6441868d6062376efa4e"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/solarArrayHeatBalance.m",
+      "sha256": "38d25aa1caca2733a26f80cbc5d9eba189c03e7e740ef53ac55d4c16f3bd6dd2"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/solarArrayIV.m",
+      "sha256": "d07ff91ae87dbac4bfb5fc9e931aca252b988dc3641d6084eab9215c2136b285"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/SolarArrayThermalModel.m",
+      "sha256": "e32afc03bd3b3a454449f64f5c519b9b9b0b711e91ecd7199cc907f8eb612aae"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/solarFlux.m",
+      "sha256": "36bdba1f8805d432773360d64736ba218e7a3e5a44cdcf700a3d6b3b132c7ace"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/solarHeatRateTable.m",
+      "sha256": "4ebdc6b5ff2c33ff77ad21d89df09ae61aed7220ffb9762f7b4cac6e38dba98c"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/sunVector.m",
+      "sha256": "6780ef49368d65aa44ca4185e27f8f9051555452e04aaabfe4584ddf007a921e"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/testApprovedUpdate.m",
+      "sha256": "d747290050452fe258eb0e06f92fe736b0a6de9670654fa7d58bf591a513818d"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/testBatteryTrade.m",
+      "sha256": "e000fe6d646ef6bf096ae497229e194b65700c0538a78ec91177394d34923bcd"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/testComponentBoundaries.m",
+      "sha256": "884395754ded3469a27d95657462637d6062df891812c87d924f9cb664dc4e94"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/testPowerBalance.m",
+      "sha256": "08bb8bd67270ae901e691d0d23059d814cbeef7721dc933e76931c868c029e22"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/+finalPowerEPS/testSolarFidelity.m",
+      "sha256": "c979091a490899f82445d9af702f8b9e6de916fa904262e17518f0d2a9f96b5c"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/PROTECTION_AUDIT.json",
+      "sha256": "6fe93973b26c858f1d2d26faef28570dc1aa4db4df3c663b6d68672c9183d462"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/README.md",
+      "sha256": "cbce5a0622ec21b239cb0e269edd7ffb825aa7b5ed4eb513622cb90777d71aa4"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/runFinalPowerEPS.m",
+      "sha256": "c1ae8409f1887b1279a2e1f11ede42edc1f215536b0fa6cef5e4855f37a3a901"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/SOURCE_MANIFEST.json",
+      "sha256": "eeefa00f8613dff624efd78cb7cbac1b1521f78bf079396ec082b2f0827ef023"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/tests/testFinalPowerEPS.m",
+      "sha256": "86208243eb312760056fb9488799b2ceed65a13b449227a98ee739938973c720"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/tests/testRefineFinalPowerEPS.m",
+      "sha256": "9fbac66a0afe57d4d1bacfc440211c7d6a29f70dbf22a1d0db88163d8f5acf18"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/tests/validateFinalPowerIntegration.m",
+      "sha256": "7a35da720700c849e962ce4fedc786b03f9b7fa91d5e0ff0bbf24faba3f26872"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/tests/validateFinalPowerPlots.m",
+      "sha256": "b851562292083a6e041cf4bfd86f73a670bf0c079dae2fae4f47715ce8ced50d"
+    },
+    {
+      "path": "ODIN-Model/power/Final Power Generation - EPS Thermal Modeling/VALIDATION_REPORT.md",
+      "sha256": "29b3edc8774ae5d65bb56a159ecf1e235e00de6375d0986a401ab273991a8934"
+    }
+  ]
+}
