@@ -1,4 +1,4 @@
-function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
+function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, warmupTime)
     tic;
     %% 0. RANDOM SEED
     % Fixing the seed makes every run identical. Use 'shuffle' for a new random
@@ -17,11 +17,19 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     if nargin<6
         T_sim = min(abs((nx.*(vx>0)-x0_init)./vx),abs((ny.*(vy>0)-y0_init)./vy));              % total simulated time (seconds)
     end
+    % warm up is extra history, where tsim still remains the recorded
+    % duration.
+    if nargin < 7, warmupTime = 2000; end
+    tStart = -warmupTime;
+    disp(['Warm-up: ', num2str(warmupTime),' s'])
     disp(['Simulating T = ',num2str(T_sim), 's of data']);
-    dt    = 1e-3;              % time step used to LOOK UP the target's light on
-                               % each pixel (seconds). Photon arrival times are
-                               % NOT limited to this grid. Keep the target's
-                               % motion per step (v*dt) below ~0.3 px.
+    dt = min(1e-3, 0.2/max(hypot(vx,vy), eps)); % time step used to LOOK UP the target's light on
+                                                % each pixel (seconds). Photon arrival times are
+                                                % NOT limited to this grid. Keep the target's
+                                                % motion per step (v*dt) below ~0.3 px.
+                                                % NOTE: Changed to resolve target motion instead of original dt = 0.5
+                                                % feel free to change this
+
     
     polarity01 = true;         % true : write polarity as 0/1 (Prophesee style)
                                % false: write polarity as -1/+1
@@ -70,7 +78,10 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
                                % (0 = steady, 0.5 = +/-50%, 1 = fades to zero)
     f_spin    = 10;            % Flicker frequency in Hz (ignored if mod_depth=0)
     sigma_psf = 1.15;           % Blur (Gaussian PSF standard deviation) in pixels
-            
+    % if flicker is present, also resolve brightness flicker
+    if mod_depth > 0 && f_spin > 0
+        dt = min(dt, 1/(100*f_spin));
+    end
     %% 5. DERIVED QUANTITIES
     fullNoise = strcmpi(bgMode, 'full noise');
     if ~fullNoise && ~strcmpi(bgMode, 'clean')
@@ -93,7 +104,6 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     t_vec  = (0:dt:T_sim)';                       % time grid (column vector)
     x_bar  = x0 + vx*t_vec;                       % target centroid x at each time
     y_bar  = y0 + vy*t_vec;                       % target centroid y at each time
-    Phi_t  = Phi_0*(1 + mod_depth*sin(2*pi*f_spin*t_vec));  % target brightness vs time
     inv_s2 = 1/(sqrt(2)*sigma_psf);               % constant used inside erf()
     
     % Warn if the blur would be clipped by the sensor edge
@@ -109,8 +119,10 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     else
         % Clean mode: pixels away from the track only see steady sky light, which
         % makes no events, so skip them. Simulate just the box around the track.
-        xList = max(1,floor(min(x_bar))-m) : min(nx,ceil(max(x_bar))+m);
-        yList = max(1,floor(min(y_bar))-m) : min(ny,ceil(max(y_bar))+m);
+        xHistory = x0 + vx*[tStart T_sim];
+        yHistory = y0 + vy*[tStart T_sim];
+        xList = max(1,floor(min(xHistory))-m) : min(nx,ceil(max(xHistory))+m);
+        yList = max(1,floor(min(yHistory))-m) : min(ny,ceil(max(yHistory))+m);
     end
     
     % Full-noise safety check: rough estimate of how many events will be made.
@@ -120,7 +132,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     if fullNoise
         h_bg        = b*(log(lam_bg) - log(lambda_r))/lam_bg;   % voltage jump per sky photon
         evPerPhoton = 1 + max(0, h_bg)/abs(c_neg);
-        estEvents   = numel(xList)*numel(yList)*T_sim*lam_bg*evPerPhoton;
+        estEvents   = numel(xList)*numel(yList)*(warmupTime + T_sim)*lam_bg*evPerPhoton;
         fprintf('Estimated background events: %.2e\n', estEvents);
         if estEvents > maxEventsAllowed
             error(['Full-noise mode would create ~%.1e events. Reduce nx/ny, T_sim, ' ...
@@ -136,8 +148,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     % pixel is a product of an x part and a y part, each computed with erf()
     % (Eq. 15). Fy depends only on the pixel row, so compute it once for all rows.
     %   Fy size: (number of time steps) x (number of rows)
-    Fy = 0.5*(erf((yList + 0.5 - y_bar)*inv_s2) - erf((yList - 0.5 - y_bar)*inv_s2));
-    
+
     events    = zeros(1e6, 4);     % columns: x, y, polarity(-1/+1), time(s)
     evCount   = 0;                 % how many rows of 'events' are filled
     nCols     = numel(xList);
@@ -145,22 +156,50 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
     
     for ci = 1:nCols
         ix = xList(ci);
-        % Fraction of the target's light in this pixel column, at every time step
-        Fx = 0.5*(erf((ix + 0.5 - x_bar)*inv_s2) - erf((ix - 0.5 - x_bar)*inv_s2));
+        [tx1, tx2] = axis_times(x0, vx, ix-m, ix+m);
+
     
         for cj = 1:numel(yList)
             iy = yList(cj);
-    
-            % Photon rate (photons/s) hitting THIS pixel at every time step:
-            % steady sky + the target's moving, blurred light
-            lam_t = lam_bg + Phi_t .* Fx .* Fy(:,cj);
-    
+            
+            [ty1, ty2] = axis_times(y0, vy, iy-m, iy+m);
+            t1 = max([tStart, tx1, ty1]);
+            t2 = min([T_sim, tx2, ty2]);
+            hasTarget = Phi_0 > 0 && t2 > t1;
+            if ~fullNoise && ~hasTarget
+                continue;
+            end
+
+            edges = [tStart; 0; T_sim];
+            if hasTarget
+                if vx==0 && vy==0 && (mod_depth==0 || f_spin==0)
+                    n = 1;
+                else
+                    n = max(1,ceil((t2-t1)/dt));
+                end
+                edges = [edges;linspace(t1,t2,n+1)'];
+            end
+            edges = unique(edges);
+            t = [tStart; (edges(1:end-1) + edges(2:end))/2];
+            lam = lam_bg*ones(size(t));
+            if hasTarget
+                lit = t>=t1 & t<= t2;
+                x = x0 + vx*(t(lit));
+                y = y0 + vy*(t(lit));
+                % Fraction of the target's light in this pixel column, at every time step
+                Fx = 0.5*(erf((ix + 0.5 - x)*inv_s2) - erf((ix - 0.5 - x)*inv_s2));
+                Fy = 0.5*(erf((iy + 0.5 - y)*inv_s2) - erf((iy - 0.5 - y)*inv_s2));
+                Phi = Phi_0*(1 + mod_depth*sin(2*pi*f_spin*t(lit)));
+                % Photon rate (photons/s) hitting THIS pixel at every time step:
+                % steady sky + the target's moving, blurred light
+                lam(lit) = lam_bg + Phi.*Fx.*Fy;
+            end
             % Run the leaky-bucket simulation for this one pixel
-            [tEv, pEv] = pixel_stochastic(lam_t, dt, T_sim, p);
-    
+            [tEv, pEv] = pixel_stochastic(edges,lam(2:end), lam(1), p);
             % Append this pixel's events to the big list, doubling its size
             % whenever it fills up (much faster than growing it each time)
             k = numel(tEv);
+
             if k > 0
                 need = evCount + k;
                 if need > size(events,1)
@@ -169,11 +208,6 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim)
                 events(evCount+1:need,:) = [repmat(ix,k,1), repmat(iy,k,1), pEv, tEv];
                 evCount = need;
             end
-        end
-    
-        if ci/nCols >= nextPrint
-            fprintf('  %3.0f%%  (%d events so far)\n', 100*ci/nCols, evCount);
-            nextPrint = nextPrint + 0.1;
         end
     end
     events  = events(1:evCount,:);   % drop the unused pre-allocated rows
@@ -213,7 +247,22 @@ end
 %% =======================================================================
 %                              LOCAL FUNCTION
 % ========================================================================
-function [tEv, pEv] = pixel_stochastic(lam_t, dt, T_sim, p)
+
+% time interval inside an axis range, including the zero velocity
+function [t1,t2] = axis_times(position,velocity,lower,upper)
+    if velocity == 0
+        if position>=lower && position<=upper
+            t1 = -Inf; t2 = Inf;
+        else
+            t1 = Inf; t2 = -Inf;
+        end
+    else
+        times = sort([(lower-position)/velocity,(upper-position)/velocity]);
+        t1 = times(1); t2 = times(2);
+    end
+end
+
+function [tEv, pEv] = pixel_stochastic(edges, lam_t, initialRate, p)
 % Simulates ONE pixel photon-by-photon and returns its events.
 %   lam_t : photon rate hitting the pixel at each time step (photons/s)
 %   dt    : spacing of lam_t samples (s)
@@ -223,51 +272,39 @@ function [tEv, pEv] = pixel_stochastic(lam_t, dt, T_sim, p)
 %   tEv   : event times (s)         pEv : event polarities (+1 / -1)
 
     a = p.a;  b = p.b;  lr = p.lambda_r;  cp = p.c_pos;  cn = p.c_neg;
-    nSteps = numel(lam_t);
+    
+    % instead of using max brightness for the whole run we can draw photons from the actual samled light profile.
+    % Integrated photon rate:
+    H = [0; cumsum(lam_t.*diff(edges))];
+    n_est = ceil(H(end) + 10*sqrt(H(end)) + 20);
+    %unit rate exponential gaps
+    arrivals = cumsum(-log(1 - rand(n_est, 1)));
+
+    while arrivals(end) < H(end)
+        arrivals = [arrivals; arrivals(end) + cumsum(-log(1 - rand(n_est, 1)))];
+    end
+    arrivals = arrivals(arrivals<H(end));
+    [~, ~, j] = histcounts(arrivals, H);
+    T_n = edges(j)+(arrivals-H(j))./lam_t(j);
+    lam_n = lam_t(j);
 
     % Start the bucket at its steady-state level for the starting light (Eq. 9)
     % so the pixel does not make a burst of fake events at t = 0.
-    V     = (b/a)*log(lam_t(1)/lr);
+    % initialize once at the negative warm up start.
+    V     = (b/a)*log(initialRate/lr);
     V_ref = V;                                   % the "last checked" level
-    lam_max = max(lam_t);                        % brightest the pixel ever gets
-
-    % ---- STEP 1: generate random photon arrival times -----------------------
-    % The light level changes with time, so use "thinning": first create
-    % arrivals at the CONSTANT maximum rate, then randomly throw some away
-    % so the survivors follow the true time-varying rate (Eq. 8, Sec. 2.2).
-    n_est  = ceil(1.2*lam_max*T_sim + 10*sqrt(lam_max*T_sim) + 20);  % how many to draw
-    T_cand = cumsum(-log(1 - rand(n_est,1))/lam_max);   % gaps are exponential -> cumulative sum = arrival times
-    while T_cand(end) < T_sim                           % drew too few? draw more
-        T_cand = [T_cand; T_cand(end) + cumsum(-log(1 - rand(n_est,1))/lam_max)]; %#ok<AGROW>
-    end
-    T_cand = T_cand(T_cand <= T_sim);                   % keep only arrivals inside the run
-
-    if isempty(T_cand)
-        T_n = zeros(0,1);  lam_n = zeros(0,1);
-    else
-        idx  = min(max(round(T_cand/dt) + 1, 1), nSteps);  % time -> index into lam_t
-        lamc = lam_t(idx);                                 % true light level at each candidate
-        keep = rand(size(T_cand)) <= lamc/lam_max;         % keep with probability lam/lam_max
-        T_n  = T_cand(keep);                               % final photon arrival times
-        lam_n = lamc(keep);                                % light level at each photon
-    end
-
-    % ---- STEP 2: march through the photons, tracking the voltage ------------
+    t_curr = edges(1);
     cap = 256;                                   % size of the event buffer (grows by doubling)
-    tEv = zeros(cap,1);  pEv = zeros(cap,1);  nEv = 0;
-    nPh    = numel(T_n);
-    t_curr = 0;                                  % time up to which V is known
+    tEv = zeros(cap,1); pEv = zeros(cap,1); nEv = 0;
 
-    % One loop pass per photon, plus ONE EXTRA pass for the quiet stretch after
-    % the last photon (so its leftover decay events are not missed).
-    for n = 1:nPh+1
-        isTail = (n > nPh);
-        if isTail, t_next = T_sim; else, t_next = T_n(n); end
-
-        % -- 2a. Events caused purely by the voltage LEAKING before the next photon.
-        % Between photons V decays smoothly, so we can solve exactly for the
-        % moment it reaches the next threshold and, if that moment is before
-        % the next photon, record an event and repeat.
+    for n = 1:numel(T_n) + 1
+        isTail = n > numel(T_n);
+        if isTail
+            t_next = edges(end);
+        else
+            t_next = T_n(n);
+        end
+        
         for guard = 1:2000
             if V > 0
                 tgt = V_ref + cn;                          % lower threshold level
@@ -278,14 +315,14 @@ function [tEv, pEv] = pixel_stochastic(lam_t, dt, T_sim, p)
             else
                 break;
             end
-            t_cross = t_curr + log(V/tgt)/a;               % exact time V reaches the threshold
-            if t_cross < t_next
-                V = tgt;  V_ref = tgt;  t_curr = t_cross;  % event: reset reference
+            t_cross = t_curr + log(V/tgt)/a;   
+            if t_cross >= t_next, break; end
+
+            V = tgt;  V_ref = tgt;  t_curr = t_cross;  % event: reset reference
+            if t_curr >= 0 && t_curr < edges(end)
                 nEv = nEv + 1;
                 if nEv > cap, cap = 2*cap; tEv(cap) = 0; pEv(cap) = 0; end
                 tEv(nEv) = t_curr;  pEv(nEv) = pol;
-            else
-                break;                                     % next threshold not reached before next photon
             end
         end
 
@@ -295,7 +332,7 @@ function [tEv, pEv] = pixel_stochastic(lam_t, dt, T_sim, p)
         if isTail, break; end                              % the extra pass ends here
 
         % -- 2c. The photon arrives: voltage jumps up (Eq. 3)
-        V = V + b*(log(lam_n(n)) - log(lr))/lam_n(n);
+        V = V + b*log(lam_n(n)/lr)/lam_n(n);
 
         % -- 2d. Did that jump cross a threshold? (at most ONE event per photon)
         d = V - V_ref;
@@ -306,9 +343,11 @@ function [tEv, pEv] = pixel_stochastic(lam_t, dt, T_sim, p)
         else
             continue;                                      % no event, go to next photon
         end
-        nEv = nEv + 1;
-        if nEv > cap, cap = 2*cap; tEv(cap) = 0; pEv(cap) = 0; end
+        if t_curr >= 0 && t_curr<edges(end)
+            nEv = nEv + 1;
+            if nEv > cap, cap = 2*cap; tEv(cap) = 0; pEv(cap) = 0; end
         tEv(nEv) = t_curr;  pEv(nEv) = pol;
+        end
     end
 
     tEv = tEv(1:nEv);  pEv = pEv(1:nEv);            % trim unused buffer space
