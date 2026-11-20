@@ -1,4 +1,4 @@
-function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, warmupTime)
+function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, warmupTime, initialState, saveOutput)
     tic;
     %% 0. RANDOM SEED
     % Fixing the seed makes every run identical. Use 'shuffle' for a new random
@@ -11,7 +11,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
     
     % nx = 1280;  ny = 720;      % sensor size in pixels. MUST match nx/ny in your
                                % angular-rate pipeline.
-    nx = 2560;  ny = 2560;      % sensor size in pixels. MUST match nx/ny in your
+    nx = 50;  ny = 50;      % sensor size in pixels. MUST match nx/ny in your
                                % angular-rate pipeline.
                                
     if nargin<6
@@ -20,6 +20,9 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
     % warm up is extra history, where tsim still remains the recorded
     % duration.
     if nargin < 7, warmupTime = 2000; end
+    if nargin < 8, initialState = []; end
+    if nargin < 9, saveOutput = true; end
+
     tStart = -warmupTime;
     disp(['Warm-up: ', num2str(warmupTime),' s'])
     disp(['Simulating T = ',num2str(T_sim), 's of data']);
@@ -101,9 +104,8 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
     p = struct('a',a, 'b',b, 'lambda_r',lambda_r, 'c_pos',c_pos, 'c_neg',c_neg);
     
     %% 6. TARGET MOTION AND LIGHT OVER TIME
-    t_vec  = (0:dt:T_sim)';                       % time grid (column vector)
-    x_bar  = x0 + vx*t_vec;                       % target centroid x at each time
-    y_bar  = y0 + vy*t_vec;                       % target centroid y at each time
+    x_bar  = x0 + vx*[0 T_sim];                       % target centroid x at each time
+    y_bar  = y0 + vy*[0 T_sim];                       % target centroid y at each time
     inv_s2 = 1/(sqrt(2)*sigma_psf);               % constant used inside erf()
     
     % Warn if the blur would be clipped by the sensor edge
@@ -113,7 +115,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
     end
     
     %% 7. CHOOSE WHICH PIXELS TO SIMULATE
-    if fullNoise
+    if fullNoise || ~isempty(initialState)
         % Every pixel fires from sky photons, so every pixel must be simulated
         xList = 1:nx;  yList = 1:ny;
     else
@@ -154,6 +156,9 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
     nCols     = numel(xList);
     nextPrint = 0.1;               % next progress-print threshold (10%, 20%, ...)
     
+    finalState.V = zeros(ny, nx);     % allocate the state output before the loops
+    finalState.V_ref = zeros(ny, nx); % uses y,x indexing
+     
     for ci = 1:nCols
         ix = xList(ci);
         [tx1, tx2] = axis_times(x0, vx, ix-m, ix+m);
@@ -166,7 +171,7 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
             t1 = max([tStart, tx1, ty1]);
             t2 = min([T_sim, tx2, ty2]);
             hasTarget = Phi_0 > 0 && t2 > t1;
-            if ~fullNoise && ~hasTarget
+            if ~fullNoise && ~hasTarget && isempty(initialState)
                 continue;
             end
 
@@ -194,8 +199,17 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
                 % steady sky + the target's moving, blurred light
                 lam(lit) = lam_bg + Phi.*Fx.*Fy;
             end
+
+            state0 = [];
+
+            if ~isempty(initialState)
+                state0 = [initialState.V(iy, ix), initialState.V_ref(iy, ix)];
+            end
             % Run the leaky-bucket simulation for this one pixel
-            [tEv, pEv] = pixel_stochastic(edges,lam(2:end), lam(1), p);
+            [tEv, pEv, stateEnd] = pixel_stochastic(edges,lam(2:end), lam(1), p, state0);
+
+            finalState.V(iy, ix) = stateEnd(1);
+            finalState.V_ref(iy, ix) = stateEnd(2);
             % Append this pixel's events to the big list, doubling its size
             % whenever it fills up (much faster than growing it each time)
             k = numel(tEv);
@@ -225,7 +239,12 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
         fprintf('Added %d sparse noise events (%.3g events/s/pixel)\n', nN, noiseRate);
     end
     
-    if isempty(events), warning('No events triggered!'); return; end
+    if isempty(events)
+        if T_sim > 0
+            warning('No events triggered!');
+        end 
+        return;
+    end
     
     %% 10. SORT BY TIME AND SAVE
     [~, sortIdx] = sort(events(:,4));
@@ -236,7 +255,8 @@ function [events] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, w
     
     fprintf('Finished in %.1f s. Total events: %d (circuit %d; +: %d, -: %d)\n', ...
         toc, size(events_out,1), nTarget, sum(events(:,3)>0), sum(events(:,3)<0));
-    if nargin<6
+    if ~saveOutput, return; end
+    if Phi_0 > 0
         writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/census/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
     else
         writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/censusNoise/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
@@ -262,12 +282,13 @@ function [t1,t2] = axis_times(position,velocity,lower,upper)
     end
 end
 
-function [tEv, pEv] = pixel_stochastic(edges, lam_t, initialRate, p)
+function [tEv, pEv, stateEnd] = pixel_stochastic(edges, lam_t, initialRate, p, state0)
 % Simulates ONE pixel photon-by-photon and returns its events.
-%   lam_t : photon rate hitting the pixel at each time step (photons/s)
-%   dt    : spacing of lam_t samples (s)
-%   T_sim : total duration (s)
-%   p     : circuit constants (a, b, lambda_r, c_pos, c_neg)
+%   edges       : 
+%   lam_t       : photon rate hitting the pixel at each time step (photons/s)
+%   initialRate : 
+%   p           : circuit constants (a, b, lambda_r, c_pos, c_neg)
+%   state0      : initial state to run V and V_ref from
 % Returns:
 %   tEv   : event times (s)         pEv : event polarities (+1 / -1)
 
@@ -285,14 +306,20 @@ function [tEv, pEv] = pixel_stochastic(edges, lam_t, initialRate, p)
     end
     arrivals = arrivals(arrivals<H(end));
     [~, ~, j] = histcounts(arrivals, H);
-    T_n = edges(j)+(arrivals-H(j))./lam_t(j);
+    ratesAtPhotons = lam_t(j);
+    T_n = edges(j)+(arrivals-H(j))./ratesAtPhotons(:);
     lam_n = lam_t(j);
 
     % Start the bucket at its steady-state level for the starting light (Eq. 9)
     % so the pixel does not make a burst of fake events at t = 0.
     % initialize once at the negative warm up start.
-    V     = (b/a)*log(initialRate/lr);
-    V_ref = V;                                   % the "last checked" level
+    if isempty(state0)
+        V     = (b/a)*log(initialRate/lr);
+        V_ref = V; % the "last checked" level
+    else
+        V = state0(1);
+        V_ref = state0(2);
+    end
     t_curr = edges(1);
     cap = 256;                                   % size of the event buffer (grows by doubling)
     tEv = zeros(cap,1); pEv = zeros(cap,1); nEv = 0;
@@ -349,6 +376,6 @@ function [tEv, pEv] = pixel_stochastic(edges, lam_t, initialRate, p)
         tEv(nEv) = t_curr;  pEv(nEv) = pol;
         end
     end
-
+    stateEnd = [V, V_ref];
     tEv = tEv(1:nEv);  pEv = pEv(1:nEv);            % trim unused buffer space
 end
