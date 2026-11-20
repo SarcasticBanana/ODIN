@@ -78,53 +78,82 @@ debrisDens2d = reshape(dens,[nDecs, nAlts]); % rows are declinations, cols are a
 
 %% calculate inclination distribution
 nIncs = 500;
-decs = decUniq(decUniq>0);
+decUniqUpper = decUniq(decUniq>0);
 incs = linspace(0,pi,nIncs)';
-[decsmesh,altsmesh,incsmesh] = meshgrid(decs,altUniq,incs);
+[decsmesh,altsmesh,incsmesh] = meshgrid(decUniqUpper,altUniq,incs);
 
 Kmask = sin(incsmesh)>abs(sin(decsmesh));
-K = zeros(nAlts,nDecs/2,nIncs);
+K = zeros(nAlts,numel(decUniqUpper),nIncs);
 K(Kmask) = 1./sqrt(max(1e-4,sin(incsmesh(Kmask)).^2-sin(decsmesh(Kmask)).^2));
 dinc = median(diff(incs));
 
-rhoModel = @(theta) densModel(theta,incs,dinc,K);
+rhoModel = @(theta) densModel2D(theta,altUniq,incs,dinc,K);
 
-% Suppose rhoTarget is [numel(altUniq) x numel(posDecs)] on the same grid
+% Suppose rhoTarget is [numel(altUniq) x numel(decUniqUpper)] on the same grid
 rhoTarget = debrisDens2d(nDecs/2+1:end,:)';
 validMask = ~isnan(rhoTarget) & isfinite(rhoTarget);
 targetVec = rhoTarget(validMask);
 
-mu0  = deg2rad([65, 74, 83, 98]);
-A0   = ones(size(mu0)) * 1e-9;
-sig0 = ones(size(mu0)) * deg2rad(3);
+% Initial guesses for 4 2D lobes: [A; mu_i; sig_i; mu_h; sig_h]
+mu_i0  = deg2rad([65, 74, 83, 98]);
+sig_i0 = ones(size(mu_i0)) * deg2rad(3);
+mu_h0  = [800, 800, 830, 800];        % [km] anchored near the ~800 km peak
+sig_h0 = ones(size(mu_i0)) * 50;      % [km]
+A0     = ones(size(mu_i0)) * 1e-9;
 c0_init = 1e-12;
 
-theta0 = [c0_init; reshape([A0; mu0; sig0], [], 1)];
+theta0 = [c0_init; reshape([A0; mu_i0; sig_i0; mu_h0; sig_h0], [], 1)];
 
-lb = [0;     reshape([zeros(size(mu0)); zeros(size(mu0)); ones(size(mu0))*deg2rad(0.5)], [], 1)];
-ub = [Inf;   reshape([Inf(size(mu0));   pi*ones(size(mu0));  ones(size(mu0))*deg2rad(30)], [], 1)];
+lb = [0;   reshape([zeros(size(mu_i0)); ...
+                    zeros(size(mu_i0)); ...
+                    ones(size(mu_i0))*deg2rad(0.5); ...
+                    min(altUniq)*ones(size(mu_i0)); ...
+                    10*ones(size(mu_i0))], [], 1)];
 
-resFun = @(th) localResiduals(th, incs, dinc, K, validMask, targetVec);
+ub = [Inf; reshape([Inf(size(mu_i0)); ...
+                    pi*ones(size(mu_i0)); ...
+                    ones(size(mu_i0))*deg2rad(30); ...
+                    max(altUniq)*ones(size(mu_i0)); ...
+                    500*ones(size(mu_i0))], [], 1)];
+
+resFun = @(th) localResiduals(th, altUniq, incs, dinc, K, validMask, targetVec);
 
 opts = optimoptions('lsqnonlin', 'Display', 'iter');
 thetaHat = lsqnonlin(resFun, theta0, lb, ub, opts);
 
 rhoHat = rhoModel(thetaHat);
 
-function r = localResiduals(theta, incVec, dInc, K, validMask, targetVec)
-    rhoPred = densModel(theta, incVec, dInc, K);
-    r = rhoPred(validMask) - targetVec;
+altsmesh2d = altsmesh(:,:,1);
+decsmesh2d = decsmesh(:,:,1);
+figure; hold on;
+scatter3(altsmesh2d(:),decsmesh2d(:),rhoTarget(:),'b');
+scatter3(altsmesh2d(:),decsmesh2d(:),rhoHat(:),'r');
+
+function r = localResiduals(theta, altVec, incVec, dInc, K, validMask, targetVec)
+    rhoPred = densModel2D(theta, altVec, incVec, dInc, K);
+    r = 1e9*(rhoPred(validMask) - targetVec);
 end
 
-function rho = densModel(theta,incs,dinc,K)
+function winc2D = inclinationWeight(theta, altVec, incs)
     c0 = theta(1);
-    params = reshape(theta(2:end), 3, []);   % rows: [A; mu; sig], cols: each lobe
-    As   = params(1, :);
-    mus  = params(2, :);
-    sigmas = params(3, :);    
-    winc = c0 + sum(As.*exp(-0.5*((incs-mus)./sigmas).^2),2);
+    params = reshape(theta(2:end), 5, []);   % rows: [A; mu_i; sig_i; mu_h; sig_h]
+    As     = params(1, :);
+    mu_i   = params(2, :);
+    sig_i  = params(3, :);
+    mu_h   = params(4, :);
+    sig_h  = params(5, :);
 
-    rho = sum(K .* reshape(winc, [1, 1, numel(incs)]), 3) * dinc;
+    % Separable 2D Gaussians: G_h is [nAlts x nLobes], G_i is [nIncs x nLobes]
+    G_h = exp(-0.5 * ((altVec(:) - mu_h) ./ sig_h).^2);
+    G_i = exp(-0.5 * ((incs(:)   - mu_i) ./ sig_i).^2);
+
+    % Combine into [nAlts x nIncs], then broadcast across declination (dim 2)
+    winc2D = c0 + G_h * (As .* G_i)';
+end
+
+function rho = densModel2D(theta, altVec, incs, dinc, K)
+    winc2D = inclinationWeight(theta, altVec, incs);
+    rho = sum(K .* reshape(winc2D, [numel(altVec), 1, numel(incs)]), 3) * dinc;
 end
 
 %% plot inclination distribution for each altitude
@@ -264,39 +293,36 @@ end
 cfg = config();
 cfg.h = 600;                  % Your chosen altitude [km]
 nOrbit = 1;
-out = propagate(cfg, nOrbit);     % Ale's orbit calculation
+out = propagate(cfg, nOrbit); % Ale's orbit calculation
 N = length(out.t);
 
-altsmesh = reshape(alts,[36,40]);
-decsmesh = reshape(decs,[36,40]);
+altsmesh = reshape(alts, [36, 40]);
+decsmesh = reshape(decs, [36, 40]);
 
 bRTN = [sind(66); 0; -cosd(66)];
 
 alpha = deg2rad(1.49563646809545/2); % half width of sensor
-xis = linspace(-1,1,10);
+xis = linspace(-1, 1, 10);
 dxi = mean(diff(xis));
-xis = xis(1:end-1)+dxi/2;
-etas = linspace(-1,1,10);
+xis = xis(1:end-1) + dxi/2;
+etas = linspace(-1, 1, 10);
 deta = mean(diff(etas));
-etas = etas(1:end-1)+deta/2;
+etas = etas(1:end-1) + deta/2;
 
 rawSensorData = readtable("Sensor_Residence_Time_Trade 3.csv");
 Rs = unique(rawSensorData.SlantRange_km);
-dR = (circshift(Rs,-1)-circshift(Rs,1))/2;
+dR = (circshift(Rs, -1) - circshift(Rs, 1)) / 2;
 dR(1) = dR(2);
 dR(end) = dR(end-1);
 
 xRTN = [0; 1; 0];
-yRTN = cross(bRTN,xRTN);
+yRTN = cross(bRTN, xRTN);
 QRTN = [xRTN yRTN bRTN];
 
-decBins = decUniq-mean(diff(decUniq))/2;
-decBins(end+1) = pi/2;
-
 % --- Precompute loop-invariant FOV geometry & differential volumes ---
-nXi = numel(xis);
+nXi  = numel(xis);
 nEta = numel(etas);
-nR = numel(Rs);
+nR   = numel(Rs);
 
 [xiGrid, etaGrid] = ndgrid(xis, etas);               % [nXi x nEta]
 tanA = tan(alpha);
@@ -305,7 +331,8 @@ denom2D = sqrt(1 + (xiGrid.^2 + etaGrid.^2) * tanA^2);
 % Unit ray vectors in camera frame and RTN frame: [3 x nXi x nEta]
 usens = cat(3, xiGrid * tanA, etaGrid * tanA, ones(nXi, nEta)) ./ denom2D;
 usens = permute(usens, [3, 1, 2]);
-uRTN = pagemtimes(QRTN, usens);                      % [3 x nXi x nEta]
+uRTN  = pagemtimes(QRTN, usens);
+uRTN_mat = reshape(uRTN, [3, nXi * nEta]);
 
 % Differential volume dV: [nXi x nEta x nR]
 Rgrid3 = reshape(Rs, [1, 1, nR]);
@@ -313,75 +340,84 @@ Rgrid4 = reshape(Rs, [1, 1, 1, nR]);
 angFactor2D = (tanA^2) ./ (denom2D.^4);
 dV = angFactor2D .* (Rgrid3.^2) .* reshape(dR, [1, 1, nR]) * dxi * deta;
 
-% Preallocate outputs across orbital steps
-nDecBins = numel(decBins) - 1;
-dDecBins = diff(decBins(:));
-inShell = false(nXi, nEta, nR, N);
-p_dec_given_dsc = zeros(nDecBins, N);
-
 % Interpolant built once outside the time loop (transposed to ndgrid format)
 densInterp = griddedInterpolant(altsmesh', decsmesh', debrisDens2d', 'linear', 'none');
 
-% Flatten uRTN to [3 x nFOV] for fast matrix multiply per time step
-nFOV = nXi * nEta;
-uRTN_mat = reshape(uRTN, [3, nFOV]);
+% Unpack fitted 2D inclination lobe parameters
+c0     = thetaHat(1);
+params = reshape(thetaHat(2:end), 5, []);
+As     = params(1, :);
+mu_i   = params(2, :);
+sig_i  = params(3, :);
+mu_h   = params(4, :);
+sig_h  = params(5, :);
+
+% Precompute inclination-side terms once outside the orbit loop
+G_i     = exp(-0.5 * ((incs(:) - mu_i) ./ sig_i).^2); % [nIncs x nLobes]
+incs4   = reshape(incs, [1, 1, 1, nIncs]);            % [1 x 1 x 1 x nIncs]
+sinInc4 = sin(incs4);                                 % [1 x 1 x 1 x nIncs]
+cosInc4 = cos(incs4);                                 % [1 x 1 x 1 x nIncs]
 
 for it = 1:N
     disp(['looking at step ', num2str(it)])
 
     RhatECI = out.r(:,it) / norm(out.r(:,it));
-    NECI = out.hvec(:,it) / norm(out.hvec(:,it));
-    TECI = cross(NECI, RhatECI);
-    QECI = [RhatECI TECI NECI];
+    NECI    = out.hvec(:,it) / norm(out.hvec(:,it));
+    TECI    = cross(NECI, RhatECI);
+    QECI    = [RhatECI TECI NECI];
 
-    % Rotate all FOV unit rays into ECI and restore [3 x nXi x nEta] shape
-    uECI = reshape(QECI * uRTN_mat, [3, nXi, nEta]);
-
-    % Scale by slant range and add spacecraft position: [3 x nXi x nEta x nR]
-    rRelECI = uECI .* Rgrid4;
-    robsECI = out.r(:,it) + rRelECI;
+    % Rotate all FOV unit rays into ECI and scale by slant range: [3 x nXi x nEta x nR]
+    uECI    = reshape(QECI * uRTN_mat, [3, nXi, nEta]);
+    robsECI = out.r(:,it) + uECI .* Rgrid4;
 
     % Geocentric norm, altitude, and declination: [nXi x nEta x nR]
     robsNorm = reshape(vecnorm(robsECI, 2, 1), [nXi, nEta, nR]);
-    hobsECI = robsNorm - cfg.Re;
-    sinDec = max(-1, min(1, reshape(robsECI(3,:,:,:), [nXi, nEta, nR]) ./ robsNorm));
-    decobs = asin(sinDec);
+    hobsECI  = robsNorm - cfg.Re;
+    sinDec   = max(-1, min(1, reshape(robsECI(3,:,:,:), [nXi, nEta, nR]) ./ robsNorm));
+    decobs   = asin(sinDec);
 
-    % Mask to altitude shell before interpolating density
-    mask = (hobsECI >= 605) & (hobsECI <= 995);
-    inShell(:,:,:,it) = mask;
+    % Volumetric cell weight w: [nXi x nEta x nR] (zero outside shell)
+    dens = densInterp(hobsECI, decobs);
+    dens(isnan(dens) | hobsECI < 605 | hobsECI > 995) = 0;
+    w = dens .* dV;
 
-    w = zeros(nXi, nEta, nR);
-    if any(mask, 'all')
-        densValid = densInterp(hobsECI(mask), decobs(mask));
-        validInterp = ~isnan(densValid);
-        maskIdx = find(mask);
-        w(maskIdx(validInterp)) = densValid(validInterp) .* dV(maskIdx(validInterp));
-    end
+    % Local orthonormal basis at each cell: [3 x nXi x nEta x nR]
+    alphaobs  = atan2(robsECI(2,:,:,:), robsECI(1,:,:,:));
+    ehatr     = robsECI ./ reshape(robsNorm, [1, nXi, nEta, nR]);
+    ehatphi   = [-sin(alphaobs); cos(alphaobs); zeros(size(alphaobs))];
+    ehattheta = cross(ehatphi, ehatr, 1);
 
-    decobs_valid = decobs(mask);
-    w_valid = w(mask);
+    % Circular debris speed and horizontal components: [nXi x nEta x nR x nIncs]
+    vdeb   = sqrt(cfg.mu ./ robsNorm);
+    ratio  = cosInc4 ./ cos(decobs);
+    veast  = vdeb .* ratio;
+    vnorth = vdeb .* sqrt(max(0, 1 - ratio.^2));
 
-    binIdx = discretize(decobs_valid, decBins);
-    validBin = ~isnan(binIdx);
-    N_bin = accumarray(binIdx(validBin), w_valid(validBin), [nDecBins, 1], @sum, 0);
+    % Debris and relative velocity in ECI (both branches): [3 x nXi x nEta x nR x nIncs]
+    veast5  = reshape(veast,  [1, nXi, nEta, nR, nIncs]);
+    vnorth5 = reshape(vnorth, [1, nXi, nEta, nR, nIncs]);
 
-    totalN = sum(N_bin);
-    if totalN > 0
-        p_dec_given_dsc(:,it) = N_bin ./ (totalN * dDecBins);
-    end
+    vdebECI_asc  = veast5 .* ehatphi + vnorth5 .* ehattheta;
+    vdebECI_desc = veast5 .* ehatphi - vnorth5 .* ehattheta;
 
-    plot(decUniq, p_dec_given_dsc(:,it));
-    drawnow limitrate;
+    vsc = out.v(:,it);
+    vrelECI_asc  = vdebECI_asc  - vsc;
+    vrelECI_desc = vdebECI_desc - vsc;
 
-    alphaobs = atan2(robsECI(2,:,:,:),robsECI(1,:,:,:));
-    ehatr = robsECI ./ reshape(robsNorm,[1,nXi,nEta,nR]);
-    ehatphi = [-sin(alphaobs); cos(alphaobs); zeros(size(alphaobs))];
-    ehattheta = cross(ehatphi,ehatr);
+    % Full N-D conditional inclination distribution p(i | h, dec): [nXi x nEta x nR x nIncs]
+    G_h  = exp(-0.5 * ((hobsECI(:) - mu_h) ./ sig_h).^2);          % [(nXi*nEta*nR) x nLobes]
+    winc = reshape(c0 + G_h * (As .* G_i)', [nXi, nEta, nR, nIncs]);
 
-    vdeb = sqrt(cfg.mu./robsNorm);
+    diffSin2 = sinInc4.^2 - sin(decobs).^2;
+    K_full   = zeros(size(diffSin2));
+    Kmask    = sinInc4 > abs(sin(decobs));
+    K_full(Kmask) = 1 ./ sqrt(max(1e-4, diffSin2(Kmask)));
 
-    % keyboard;
+    q   = K_full .* winc;
+    p_i = q ./ sum(q, 4);
+    p_i(isnan(p_i)) = 0;
+
+    keyboard;
 end
 
 %% try to fit to model using nonlinear least squares or something
