@@ -106,7 +106,7 @@ theta0 = [c0_init; reshape([A0; mu_i0; sig_i0; mu_h0; sig_h0], [], 1)];
 
 lb = [0;   reshape([zeros(size(mu_i0)); ...
                     zeros(size(mu_i0)); ...
-                    ones(size(mu_i0))*deg2rad(0.5); ...
+                    ones(size(mu_i0))*deg2rad(0.1); ...
                     min(altUniq)*ones(size(mu_i0)); ...
                     10*ones(size(mu_i0))], [], 1)];
 
@@ -128,6 +128,7 @@ decsmesh2d = decsmesh(:,:,1);
 figure; hold on;
 scatter3(altsmesh2d(:),decsmesh2d(:),rhoTarget(:),'b');
 scatter3(altsmesh2d(:),decsmesh2d(:),rhoHat(:),'r');
+view(3);
 
 function r = localResiduals(theta, altVec, incVec, dInc, K, validMask, targetVec)
     rhoPred = densModel2D(theta, altVec, incVec, dInc, K);
@@ -201,99 +202,11 @@ for i=1:nAlts
     drawnow limitrate;
 end
 
-%% observed declinations from spacecraft position (over time)
+%% observed relative velocity and slant ranges from spacecraft position (over time) (hella optimized)
 cfg = config();
-cfg.h = 600;                  % Your chosen altitude [km]
+cfg.h = 600;
 nOrbit = 1;
-out = propagate(cfg, nOrbit);     % Ale's orbit calculation
-N = length(out.t);
-% rsc = out.r(:,2);
-% vsc = out.v(:,2);
-
-% RECIs = reshape(out.r./vecnorm(out.r),[1,3,97]);
-% NECIs = reshape(out.hvec./vecnorm(out.hvec),[1,3,97]);
-% TECIs = cross(NECIs,RECIs);
-% QECIs = [RECIs; TECIs; NECIs];
-% 
-% rsunsc = reshape(out.rsun-out.r,[3,1,97]);
-% rsunRTN = pagemtimes(QECIs,rsunsc);
-
-altsmesh = reshape(alts,[36,40]);
-decsmesh = reshape(decs,[36,40]);
-
-bRTN = [sind(66); 0; -cosd(66)];
-
-alpha = deg2rad(1.49563646809545/2); % half width of sensor
-xis = linspace(-1,1,10);
-dxi = mean(diff(xis));
-xis = xis(1:end-1)+dxi/2;
-etas = linspace(-1,1,10);
-deta = mean(diff(etas));
-etas = etas(1:end-1)+deta/2;
-
-rawSensorData = readtable("Sensor_Residence_Time_Trade 3.csv");
-Rs = unique(rawSensorData.SlantRange_km);
-dR = (circshift(Rs,-1)-circshift(Rs,1))/2;
-dR(1) = dR(2);
-dR(end) = dR(end-1);
-
-xRTN = [0; 1; 0];
-yRTN = cross(bRTN,xRTN);
-QRTN = [xRTN yRTN bRTN];
-
-decBins = decUniq-mean(diff(decUniq))/2;
-decBins(end+1) = pi/2;
-
-dV = zeros(length(xis),length(etas),length(Rs));
-for it=1:length(out.t)
-    disp(['looking at step ', num2str(it)])
-
-    RhatECI = out.r(:,it)/norm(out.r(:,it));
-    NECI = out.hvec(:,it)/norm(out.hvec(:,it));
-    TECI = cross(NECI,RhatECI);
-    QECI = [RhatECI TECI NECI];
-
-    for i=1:length(xis)
-        for j=1:length(etas)
-            rcam(:,i,j) = [xis(i)*tan(alpha); etas(j)*tan(alpha); 1];
-            usens(:,i,j) = rcam(:,i,j)/norm(rcam(:,i,j));
-            uRTN(:,i,j) = QRTN*usens(:,i,j);
-            for k=1:length(Rs)
-                dV(i,j,k) = Rs(k)^2 * (tan(alpha)^2/(1+(xis(i)^2+etas(j)^2)*tan(alpha)^2)^2) * dR(k)*dxi*deta;
-                RECI(:,i,j,k) = Rs(k)*QECI*uRTN(:,i,j);
-                robsECI(:,i,j,k) = out.r(:,it) + RECI(:,i,j,k);
-                hobsECI(i,j,k) = norm(robsECI(:,i,j,k)) - cfg.Re;
-                if hobsECI(i,j,k)<605 || hobsECI(i,j,k)>995; hobsECI(i,j,k)=nan; end
-                decobs(i,j,k) = asin(robsECI(3,i,j,k)/norm(robsECI(:,i,j,k)));
-                densobs(i,j,k) = interp2(altsmesh,decsmesh,debrisDens2d,hobsECI(i,j,k),decobs(i,j,k));
-                w(i,j,k) = densobs(i,j,k)*dV(i,j,k);
-            end
-        end
-    end
-    % disp(['min dec: ',num2str(min(decobs,[],"all"))]);
-    % disp(['max dec: ',num2str(max(decobs,[],"all"))]);
-
-    inShell(:,:,:,it) = (hobsECI>=605 & hobsECI<=995);
-    
-    decobs_valid = decobs(inShell(:,:,:,it));
-    w_valid = w(inShell(:,:,:,it));
-    binIdx = discretize(decobs_valid,decBins);
-    validBin = ~isnan(binIdx);
-    N_bin = accumarray(binIdx(validBin), w_valid(validBin), [numel(decBins)-1, 1], @sum, 0);
-
-    p_dec_given_dsc(:,it) = N_bin ./ (sum(N_bin)*diff(decBins));
-
-    plot(decUniq,p_dec_given_dsc(:,it));
-    drawnow limitrate;
- 
-    % keyboard;
-end
-
-%% hella optimized
-cfg = config();
-cfg.h = 600;                  % Your chosen altitude [km]
-nOrbit = 1;
-out = propagate(cfg, nOrbit); % Ale's orbit calculation
+out = propagate(cfg, nOrbit);
 N = length(out.t);
 
 altsmesh = reshape(alts, [36, 40]);
@@ -311,8 +224,8 @@ etas = etas(1:end-1) + deta/2;
 
 rawSensorData = readtable("Sensor_Residence_Time_Trade 3.csv");
 debrisSize = rawSensorData.DebrisSize_cm;
-maxRelVel = rawSensorData.MaxRelativeVel_kms(debrisSize==5);
 Rs = unique(rawSensorData.SlantRange_km);
+maxRelVels = reshape(rawSensorData.MaxRelativeVel_kms,[length(unique(debrisSize)),length(Rs)]);
 dR = (circshift(Rs, -1) - circshift(Rs, 1)) / 2;
 dR(1) = dR(2);
 dR(end) = dR(end-1);
@@ -360,16 +273,13 @@ incs4   = reshape(incs, [1, 1, 1, nIncs]);            % [1 x 1 x 1 x nIncs]
 sinInc4 = sin(incs4);                                 % [1 x 1 x 1 x nIncs]
 cosInc4 = cos(incs4);                                 % [1 x 1 x 1 x nIncs]
 
-% Define velocity [km/s] and altitude [km] bin edges
+% Define velocity [km/s] bin edges
 vBins  = 0:0.25:16;
 dv     = diff(vBins(:));             % [nVBins x 1]
 nVBins = numel(vBins) - 1;
 
-hBins  = 600:10:1000;                % adjust to match your desired altitude resolution
-nHBins = numel(hBins) - 1;
-
-% Preallocate time-varying PDF: p(v_rel | R, h, t)
-p_vrel = zeros(nVBins, nR, nHBins, N);
+% Preallocate time-varying PDF: p(v_rel | R, t)
+p_vrel = zeros(nVBins, nR, N);
 
 % Precompute slant-range bin index matching [nXi x nEta x nR x nIncs]
 rIdx4 = repmat(reshape(1:nR, [1, 1, nR, 1]), [nXi, nEta, 1, nIncs]);
@@ -438,51 +348,45 @@ for it = 1:N
     vrelMag_asc  = reshape(vecnorm(vrelECI_asc,  2, 1), [nXi, nEta, nR, nIncs]);
     vrelMag_desc = reshape(vecnorm(vrelECI_desc, 2, 1), [nXi, nEta, nR, nIncs]);
 
-    % Bin altitudes across [nXi x nEta x nR] and expand across inclination
-    hIdx4 = repmat(discretize(hobsECI, hBins), [1, 1, 1, nIncs]);
-
-    % Keep only nonzero-weight, in-bin entries before stacking both branches
-    nz = (w_branch > 0) & ~isnan(hIdx4);
+    % Keep only nonzero-weight entries (already filtered to the 605-995 km shell)
+    nz = w_branch > 0;
     if any(nz, 'all')
         vAll = [vrelMag_asc(nz); vrelMag_desc(nz)];
         rAll = [rIdx4(nz);       rIdx4(nz)];
-        hAll = [hIdx4(nz);       hIdx4(nz)];
         wAll = [w_branch(nz);    w_branch(nz)];
 
         vIdx = discretize(vAll, vBins);
         ok   = ~isnan(vIdx);
 
-        % Accumulate across xi, eta, inclination, and asc/desc branches
-        N_vrh = accumarray([vIdx(ok), rAll(ok), hAll(ok)], wAll(ok), ...
-                           [nVBins, nR, nHBins], @sum, 0);
+        % Accumulate across xi, eta, altitude, inclination, and asc/desc branches
+        N_vr = accumarray([vIdx(ok), rAll(ok)], wAll(ok), [nVBins, nR], @sum, 0);
 
-        % Normalize along dim 1 (v_rel) to get p(v_rel | R, h, t)
-        pdf_it = N_vrh ./ (sum(N_vrh, 1) .* dv);
+        % Normalize along dim 1 (v_rel) to get p(v_rel | R, t)
+        pdf_it = N_vr ./ (sum(N_vr, 1) .* dv);
         pdf_it(isnan(pdf_it)) = 0;
-        p_vrel(:,:,:,it) = pdf_it;
+        p_vrel(:,:,it) = pdf_it;
     end
 
     vCenters = vBins(1:end-1)'+mean(dv)/2;
 
-    figure;
-    for i=1:nHBins
-        surf(vCenters,Rs,squeeze(pdf_it(:,:,i))','EdgeColor','none');
-        hold on;
-        scatter(maxRelVel,Rs)
-        hold off;
-        view(2);
-        xlim([min(vBins) max(vBins)]);
-        ylim([min(Rs) max(Rs)]);
-        zscale('log')
-        xlabel("Relative Velocities (km/s)");
-        ylabel("Slant Ranges (km)");
-        title(sprintf("Debris Altitude: %i km",altUniq(i)));
-        pause(0.1);
-        drawnow limitrate;
-    end
+    % keyboard;
+    surf(vCenters,Rs,pdf_it','EdgeColor','none');
+    % imagesc(vCenters,Rs,flipud(pdf_it'));
+    hold on;
+    plot(maxRelVels,Rs,'LineWidth',2);
+    hold off;
+    view(2);
+    xlim([min(vBins) max(vBins)]);
+    ylim([min(Rs) max(Rs)]);
+    zlim([0 max(pdf_it,[],'all')]);
+    xlabel("Relative Velocities (km/s)");
+    ylabel("Slant Ranges (km)");
+    
+    drawnow limitrate;
 
-    keyboard;
 end
+%%
+% pause(0.1);
 
 %% try to fit to model using nonlinear least squares or something
 % this code is a failure. maybe we can try to make it work in the future.
