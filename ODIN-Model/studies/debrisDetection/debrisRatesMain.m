@@ -310,6 +310,8 @@ deta = mean(diff(etas));
 etas = etas(1:end-1) + deta/2;
 
 rawSensorData = readtable("Sensor_Residence_Time_Trade 3.csv");
+debrisSize = rawSensorData.DebrisSize_cm;
+maxRelVel = rawSensorData.MaxRelativeVel_kms(debrisSize==5);
 Rs = unique(rawSensorData.SlantRange_km);
 dR = (circshift(Rs, -1) - circshift(Rs, 1)) / 2;
 dR(1) = dR(2);
@@ -357,6 +359,20 @@ G_i     = exp(-0.5 * ((incs(:) - mu_i) ./ sig_i).^2); % [nIncs x nLobes]
 incs4   = reshape(incs, [1, 1, 1, nIncs]);            % [1 x 1 x 1 x nIncs]
 sinInc4 = sin(incs4);                                 % [1 x 1 x 1 x nIncs]
 cosInc4 = cos(incs4);                                 % [1 x 1 x 1 x nIncs]
+
+% Define velocity [km/s] and altitude [km] bin edges
+vBins  = 0:0.25:16;
+dv     = diff(vBins(:));             % [nVBins x 1]
+nVBins = numel(vBins) - 1;
+
+hBins  = 600:10:1000;                % adjust to match your desired altitude resolution
+nHBins = numel(hBins) - 1;
+
+% Preallocate time-varying PDF: p(v_rel | R, h, t)
+p_vrel = zeros(nVBins, nR, nHBins, N);
+
+% Precompute slant-range bin index matching [nXi x nEta x nR x nIncs]
+rIdx4 = repmat(reshape(1:nR, [1, 1, nR, 1]), [nXi, nEta, 1, nIncs]);
 
 for it = 1:N
     disp(['looking at step ', num2str(it)])
@@ -416,6 +432,54 @@ for it = 1:N
     q   = K_full .* winc;
     p_i = q ./ sum(q, 4);
     p_i(isnan(p_i)) = 0;
+
+    % Branch weights and scalar relative speeds: [nXi x nEta x nR x nIncs]
+    w_branch     = 0.5 * w .* p_i;
+    vrelMag_asc  = reshape(vecnorm(vrelECI_asc,  2, 1), [nXi, nEta, nR, nIncs]);
+    vrelMag_desc = reshape(vecnorm(vrelECI_desc, 2, 1), [nXi, nEta, nR, nIncs]);
+
+    % Bin altitudes across [nXi x nEta x nR] and expand across inclination
+    hIdx4 = repmat(discretize(hobsECI, hBins), [1, 1, 1, nIncs]);
+
+    % Keep only nonzero-weight, in-bin entries before stacking both branches
+    nz = (w_branch > 0) & ~isnan(hIdx4);
+    if any(nz, 'all')
+        vAll = [vrelMag_asc(nz); vrelMag_desc(nz)];
+        rAll = [rIdx4(nz);       rIdx4(nz)];
+        hAll = [hIdx4(nz);       hIdx4(nz)];
+        wAll = [w_branch(nz);    w_branch(nz)];
+
+        vIdx = discretize(vAll, vBins);
+        ok   = ~isnan(vIdx);
+
+        % Accumulate across xi, eta, inclination, and asc/desc branches
+        N_vrh = accumarray([vIdx(ok), rAll(ok), hAll(ok)], wAll(ok), ...
+                           [nVBins, nR, nHBins], @sum, 0);
+
+        % Normalize along dim 1 (v_rel) to get p(v_rel | R, h, t)
+        pdf_it = N_vrh ./ (sum(N_vrh, 1) .* dv);
+        pdf_it(isnan(pdf_it)) = 0;
+        p_vrel(:,:,:,it) = pdf_it;
+    end
+
+    vCenters = vBins(1:end-1)'+mean(dv)/2;
+
+    figure;
+    for i=1:nHBins
+        surf(vCenters,Rs,squeeze(pdf_it(:,:,i))','EdgeColor','none');
+        hold on;
+        scatter(maxRelVel,Rs)
+        hold off;
+        view(2);
+        xlim([min(vBins) max(vBins)]);
+        ylim([min(Rs) max(Rs)]);
+        zscale('log')
+        xlabel("Relative Velocities (km/s)");
+        ylabel("Slant Ranges (km)");
+        title(sprintf("Debris Altitude: %i km",altUniq(i)));
+        pause(0.1);
+        drawnow limitrate;
+    end
 
     keyboard;
 end
