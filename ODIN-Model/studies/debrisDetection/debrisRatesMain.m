@@ -223,13 +223,11 @@ deta = mean(diff(etas));
 etas = etas(1:end-1) + deta/2;
 
 rawSensorData = readtable("Sensor_Residence_Time_Trade 3.csv");
-debrisSize = rawSensorData.DebrisSize_cm;
 Rs = unique(rawSensorData.SlantRange_km);
 
 sizeFile = "\studies\debrisDetection\MASTER_Data\altsize_ODIN_2024_D010_070_t.txt";
 qualify = buildDebrisQualification(sizeFile, rawSensorData);
 
-maxRelVels = reshape(rawSensorData.MaxRelativeVel_kms,[length(unique(debrisSize)),length(Rs)]);
 dR = (circshift(Rs, -1) - circshift(Rs, 1)) / 2;
 dR(1) = dR(2);
 dR(end) = dR(end-1);
@@ -282,27 +280,34 @@ vBins  = 0:0.25:16;
 dv     = diff(vBins(:));             % [nVBins x 1]
 nVBins = numel(vBins) - 1;
 
-% Preallocate time-varying PDF: p(v_rel | R, t)
-p_vrel = zeros(nVBins, nR, N);
-NqualHistory = zeros(nVBins, nR, N); % objects per speed-range bin at each sample
-NinView = zeros(N,1); % all 1-5 cm objects before qualification
-NqualInView = zeros(N,1);            % includes all speeds
-NqualOutsideBins = zeros(N,1);       % qualified weight outside plotted speed limits
+% Preallocate outputs
+p_vrel           = zeros(nVBins, nR, N);
+NqualHistory     = zeros(nVBins, nR, N); % qualified objects per speed-range bin
+NinView          = zeros(N, 1);          % all 1-5 cm objects before qualification
+NqualInView      = zeros(N, 1);          % qualified objects in view (all speeds)
+NqualOutsideBins = zeros(N, 1);          % qualified weight outside vBins limits
 
 % Precompute slant-range bin index matching [nXi x nEta x nR x nIncs]
 rIdx4 = repmat(reshape(1:nR, [1, 1, nR, 1]), [nXi, nEta, 1, nIncs]);
 
-for it = 1:N
-    disp(['looking at step ', num2str(it)])
+stopToc = 0;
+totalToc = 0;
 
-    RhatECI = out.r(:,it) / norm(out.r(:,it));
+for it = 1:N
+    fprintf("looking at step %02i/%i (%i%%, %.1fs left)\n",it,N,round(100*it/N),totalToc/(it/N) - totalToc)
+    tic;
+
+    rSC = out.r(:,it);
+    vsc = out.v(:,it);
+
+    RhatECI = rSC / norm(rSC);
     NECI    = out.hvec(:,it) / norm(out.hvec(:,it));
     TECI    = cross(NECI, RhatECI);
     QECI    = [RhatECI TECI NECI];
 
     % Rotate all FOV unit rays into ECI and scale by slant range: [3 x nXi x nEta x nR]
     uECI    = reshape(QECI * uRTN_mat, [3, nXi, nEta]);
-    robsECI = out.r(:,it) + uECI .* Rgrid4;
+    robsECI = rSC + uECI .* Rgrid4;
 
     % Geocentric norm, altitude, and declination: [nXi x nEta x nR]
     robsNorm = reshape(vecnorm(robsECI, 2, 1), [nXi, nEta, nR]);
@@ -314,7 +319,6 @@ for it = 1:N
     dens = densInterp(hobsECI, decobs);
     dens(isnan(dens) | hobsECI < 605 | hobsECI > 995) = 0;
     w = dens .* dV;
-    
 
     % Local orthonormal basis at each cell: [3 x nXi x nEta x nR]
     alphaobs  = atan2(robsECI(2,:,:,:), robsECI(1,:,:,:));
@@ -335,7 +339,6 @@ for it = 1:N
     vdebECI_asc  = veast5 .* ehatphi + vnorth5 .* ehattheta;
     vdebECI_desc = veast5 .* ehatphi - vnorth5 .* ehattheta;
 
-    vsc = out.v(:,it);
     vrelECI_asc  = vdebECI_asc  - vsc;
     vrelECI_desc = vdebECI_desc - vsc;
 
@@ -357,31 +360,19 @@ for it = 1:N
     vrelMag_asc  = reshape(vecnorm(vrelECI_asc,  2, 1), [nXi, nEta, nR, nIncs]);
     vrelMag_desc = reshape(vecnorm(vrelECI_desc, 2, 1), [nXi, nEta, nR, nIncs]);
 
-    % Angular velocity of a camera fixed in RTN [rad/s], expressed in ECI.
-    % This assumes the orbit plane is fixed over the observation interval.
-    rSC = out.r(:,it);
-    omegaECI = cross(rSC, vsc) / dot(rSC, rSC);
-
-    % Camera-frame rotation contributes omega x rRel at each FOV cell [km/s].
-    % uECI is a unit ray, so multiply by slant range after taking the cross product.
+    % Angular velocity of camera fixed in RTN [rad/s] and frame-rotation velocity [km/s]
+    omegaECI    = cross(rSC, vsc) / dot(rSC, rSC);
     omegaOnRays = repmat(omegaECI, [1, nXi, nEta]);
-    vFrame = cross(omegaOnRays, uECI, 1) .* Rgrid4;
+    vFrame      = cross(omegaOnRays, uECI, 1) .* Rgrid4;
 
-    % Compute one inclination slice at a time to limit temporary array size.
-    vPerp_asc  = zeros(size(w_branch));
-    vPerp_desc = zeros(size(w_branch));
+    % Vectorized apparent sky-plane (transverse) speed [km/s]: [nXi x nEta x nR x nIncs]
+    vAppAsc    = vrelECI_asc  - vFrame;
+    vParAsc    = sum(uECI .* vAppAsc, 1);
+    vPerp_asc  = reshape(sqrt(max(0, sum(vAppAsc.^2, 1)  - vParAsc.^2)),  [nXi, nEta, nR, nIncs]);
 
-    for ii = 1:nIncs
-        vAppAsc  = vrelECI_asc(:,:,:,:,ii)  - vFrame;
-        vAppDesc = vrelECI_desc(:,:,:,:,ii) - vFrame;
-
-        % Remove the component along each cell's line of sight.
-        vSkyAsc  = vAppAsc  - uECI .* sum(uECI .* vAppAsc, 1);
-        vSkyDesc = vAppDesc - uECI .* sum(uECI .* vAppDesc, 1);
-
-        vPerp_asc(:,:,:,ii)  = reshape(vecnorm(vSkyAsc,  2, 1), [nXi, nEta, nR]);
-        vPerp_desc(:,:,:,ii) = reshape(vecnorm(vSkyDesc, 2, 1), [nXi, nEta, nR]);
-    end
+    vAppDesc   = vrelECI_desc - vFrame;
+    vParDesc   = sum(uECI .* vAppDesc, 1);
+    vPerp_desc = reshape(sqrt(max(0, sum(vAppDesc.^2, 1) - vParDesc.^2)), [nXi, nEta, nR, nIncs]);
 
     % Keep only nonzero-weight entries (already filtered to the 605-995 km shell)
     nz = w_branch > 0;
@@ -389,39 +380,40 @@ for it = 1:N
         vAll = [vrelMag_asc(nz); vrelMag_desc(nz)];
         rAll = [rIdx4(nz);       rIdx4(nz)];
         wAll = [w_branch(nz);    w_branch(nz)];
-        
-        % nz indexes [xi, eta, range, inclination]. Map each retained sample back
-        % to its spatial cell without replicating altitude across all inclinations.
+
+        % Map each retained sample back to its spatial cell for altitude
         branchIdx = find(nz);
-        cellIdx = mod(branchIdx - 1, numel(hobsECI)) + 1;
-        altAll = [hobsECI(cellIdx); hobsECI(cellIdx)];
+        cellIdx   = mod(branchIdx - 1, numel(hobsECI)) + 1;
+        altAll    = [hobsECI(cellIdx); hobsECI(cellIdx)];
 
-        % vPerp_asc and vPerp_desc must have the same dimensions as w_branch.
         speedForSensor = [vPerp_asc(nz); vPerp_desc(nz)];
-        pSizeQual = qualify(altAll, rAll, speedForSensor);
-        wQual = wAll .* pSizeQual;
+        pSizeQual      = qualify(altAll, rAll, speedForSensor);
+        wQual          = wAll .* pSizeQual;
 
-        % Expected sensor-qualified objects in view at this orbit timestep.
+        % Expected objects in view before and after sensor qualification
+        NinView(it)     = sum(wAll);
         NqualInView(it) = sum(wQual);
-        
+
         vIdx = discretize(vAll, vBins);
         ok   = ~isnan(vIdx);
 
         % Accumulate across xi, eta, altitude, inclination, and asc/desc branches
-        binSubs = [vIdx(ok), rAll(ok)];
-        N_vr    = accumarray(binSubs, wAll(ok),  [nVBins, nR], @sum, 0);
+        binSubs  = [vIdx(ok), rAll(ok)];
+        N_vr     = accumarray(binSubs, wAll(ok),  [nVBins, nR], @sum, 0);
         Nqual_vr = accumarray(binSubs, wQual(ok), [nVBins, nR], @sum, 0);
 
         NqualHistory(:,:,it) = Nqual_vr;
         NqualOutsideBins(it) = sum(wQual(~ok));
         fracQual_vr = Nqual_vr ./ N_vr;
-        fracQual_vr(N_vr == 0) = NaN;  % Empty bin has no defined fraction
+        fracQual_vr(N_vr == 0) = NaN;
 
         % Normalize along dim 1 (v_rel) to get p(v_rel | R, t)
         pdf_it = N_vr ./ (sum(N_vr, 1) .* dv);
         pdf_it(isnan(pdf_it)) = 0;
         p_vrel(:,:,it) = pdf_it;
     end
+    stopToc = toc;
+    totalToc = totalToc+stopToc;
 end
 
 %% Whole-orbit histogram and relative speed versus slant range animation
@@ -450,63 +442,34 @@ delete(findall(groot,'Type','figure','Tag','debrisOrbitHistogram'));
 delete(findall(groot,'Type','figure','Tag','debrisOrbitAnimation'));
 fHist = figure('Name','Whole-orbit qualified occupancy','Color','w','Tag','debrisOrbitHistogram');
 ax = axes(fHist);
+hold on;
+% histogram(ax,'BinEdges',vBins500,'BinCounts',meanBySpeed500.','FaceAlpha',0.25);
+% histogram(ax,'BinEdges',vBins1k,'BinCounts',meanBySpeed1k.','FaceAlpha',0.25);
+% legend("nIncs = 500","nIncs = 1000");
 histogram(ax,'BinEdges',vBins,'BinCounts',meanBySpeed.','FaceColor',[0.10 0.42 0.65]);
 xlabel(ax,'Total relative speed (km/s)');
 ylabel(ax,'Mean qualified objects in view per bin');
 title(ax,'Qualified debris over the whole orbit','Color','k');
 grid(ax,'on'); ax.Color='w'; ax.XColor='k'; ax.YColor='k';
 
-fAnim = figure('Name','Relative speed versus slant range','Color','w','Tag','debrisOrbitAnimation');
-ax = axes(fAnim);
-rangeEdges = [Rs(1)-(Rs(2)-Rs(1))/2; (Rs(1:end-1)+Rs(2:end))/2; Rs(end)+(Rs(end)-Rs(end-1))/2];
-% pcolor requires one extra vertex on each axis to show every bin.
-h = pcolor(ax,vBins,rangeEdges,p_vrel([1:end end],[1:end end],1).');
-h.EdgeColor = 'none';
-ax.YDir='normal'; ax.Color='w'; ax.XColor='k'; ax.YColor='k';
-clim(ax,[0 max(eps,max(p_vrel,[],'all'))]);
-cb = colorbar(ax); cb.Color='k'; cb.Label.String='Conditional speed density (s/km)';
-xlabel(ax,'Total relative speed (km/s)'); ylabel(ax,'Slant range (km)');
-heading = title(ax,'','Color','k');
-for frame = 1:nFrames
-    if ~isgraphics(h), break; end
-    h.CData = p_vrel([1:end end],[1:end end],frame).';
-    heading.String = sprintf('Relative speed at each range | Orbit sample %d of %d',frame,nFrames);
-    drawnow;
-    pause(framePause_s);
-end
-   
-
-
-%%
-% pause(0.1);
-
-%% try to fit to model using nonlinear least squares or something
-% this code is a failure. maybe we can try to make it work in the future.
-% figure;
-plot(decUniq,decPDF);
-
-upperDec = decUniq(decUniq>0);
-upperDebrisPDF = decPDF(decUniq>0);
-decMesh = repmat(decUniq,1,nDecs);
-incMesh = decMesh';
-pdgiveni = 2*cos(decMesh)./(pi*sqrt(sin(incMesh).^2-sin(decMesh).^2));
-%%
-pdgiveni(decMesh>incMesh) = 0;
-binWidth = mean(diff(decUniq));
-pdgiveni(1:(length(pdgiveni)+1):end) = real(2/pi*(asin(sin(decMesh(:,1)+binWidth/2)./sin(incMesh(1,:)'))-asin(sin(decMesh(:,1)-binWidth/2)./sin(incMesh(1,:)'))));
-%%
-K_reg = pdgiveni; 
-d_reg = upperDebrisPDF; 
-
-% 4. Define the hard equality constraint: Area = sum(i_est * di) = 1
-Aeq = ones(1, length(pdgiveni)) * binWidth;
-beq = 1;
-
-% 5. Define the lower bound (strictly non-negative probabilities)
-lb = zeros(length(pdgiveni), 1);
-
-% 6. Solve using lsqlin (suppressing the command window output)
-options = optimoptions('lsqlin', 'Display', 'off');
-i_est = lsqlin(K_reg, d_reg, [], [], Aeq, beq, lb, [], [], options);
-
-figure; plot(upperDec,i_est);
+% fAnim = figure('Name','Relative speed versus slant range','Color','w','Tag','debrisOrbitAnimation');
+% ax = axes(fAnim);
+% rangeEdges = [Rs(1)-(Rs(2)-Rs(1))/2; (Rs(1:end-1)+Rs(2:end))/2; Rs(end)+(Rs(end)-Rs(end-1))/2];
+% % pcolor requires one extra vertex on each axis to show every bin.
+% h = pcolor(ax,vBins,rangeEdges,p_vrel([1:end end],[1:end end],1).');
+% h.EdgeColor = 'none';
+% ax.YDir='normal'; ax.Color='w'; ax.XColor='k'; ax.YColor='k';
+% clim(ax,[0 max(eps,max(p_vrel,[],'all'))]);
+% cb = colorbar(ax); cb.Color='k'; cb.Label.String='Conditional speed density (s/km)';
+% xlabel(ax,'Total relative speed (km/s)'); ylabel(ax,'Slant range (km)');
+% heading = title(ax,'','Color','k');
+% view(3);
+% for frame = 1:nFrames
+%     if ~isgraphics(h), break; end
+%     h.ZData = p_vrel([1:end end],[1:end end],frame).';
+%     h.CData = p_vrel([1:end end],[1:end end],frame).';
+%     zlim([0 2]);
+%     heading.String = sprintf('Relative speed at each range | Orbit sample %d of %d',frame,nFrames);
+%     drawnow;
+%     pause(framePause_s);
+% end
