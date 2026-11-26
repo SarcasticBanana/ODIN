@@ -32,29 +32,35 @@ yline([0,nx]);
 % implement phi_0 photon flux 
 Phi0 = 688000;
 for i=1:N
-    [~] = eventDataStreamFun(x0s(i),y0s(i),vxs(i),vys(i),Phi0);
+    [~] = eventDataStreamFun(nx, ny, x0s(i),y0s(i),vxs(i),vys(i),Phi0);
 end
 
 %% full random noise
 clear; clc; close all;
 odinPath();
 
-nx = 50;
-ny = 50;
-N = 20;
+nx = 100;
+ny = 100;
+% N = 100;
 
-Ts = linspace(1000,2000,N);
+% Ts = linspace(1,1000,N);
+diffT = 5;
+startTs = 0:diffT:5000;
+N = length(startTs);
 
 Phi0 = 0;
 
+% [events,finalState] = eventDataStreamFun(nx, ny, -nx, -ny, 0, 0, Phi0, 2000, 0, [], false);
+
+finalState = [];
 for i=1:N
-    eventDataStreamFun(-nx,-ny,0,0,Phi0,Ts(i));
+    [~,finalState] = eventDataStreamFun(nx, ny, -nx, -ny, 0, 0, Phi0, startTs(i), diffT, 0, finalState, true);
 end
 
 %%
 % filelist = dir("model/Payload Models/Event Data Simulation Model/census/*.txt");
 filelist = dir("model/Payload Models/Event Data Simulation Model/censusNoise/*.txt");
-oldSamples = load("eventSamplesNoise.mat");
+try oldSamples = load("eventSamplesNoise.mat"); catch; end
 Npost = length(filelist);
 dataRate64 = zeros(1,Npost);
 dataRate16 = zeros(1,Npost);
@@ -68,29 +74,31 @@ tspost = zeros(1,Npost);
 for i=1:Npost
     filepath = [filelist(i).folder,'\',filelist(i).name];
     [dataRate64(i),dataRate16(i)] = txt2binCalc(filepath);
-    dataRate64(i) = dataRate64(i)*(2560^2)/(50^2);
-    dataRate16(i) = dataRate16(i)*(2560^2)/(50^2);
+    dataRate64(i) = dataRate64(i)*(2560^2)/(nx*ny);
+    dataRate16(i) = dataRate16(i)*(2560^2)/(nx*ny);
     if ~contains(filelist(i).folder,'Noise')
         detectable(i) = AngularRateFun(filepath,"detection");
     end
 
-    regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+)_tsim(.+).txt",'tokens');
+    regex = regexp(filelist(i).name,"_x(.+)_y(.+)_vx(.+)_vy(.+)_tstart(.+)_tend(.+).txt",'tokens');
     x0post(i) = str2double(regex{1}{1});
     y0post(i) = str2double(regex{1}{2});
     vxpost(i) = str2double(regex{1}{3});
     vypost(i) = str2double(regex{1}{4});
-    tspost(i) = str2double(regex{1}{5});
+    tspost(i) = (str2double(regex{1}{5})+str2double(regex{1}{6}))/2;
 end
 
-Npost = Npost+oldSamples.Npost;
-dataRate64 = [oldSamples.dataRate64,dataRate64];
-dataRate16 = [oldSamples.dataRate16,dataRate16];
-detectable = [oldSamples.detectable,detectable];
-x0post = [oldSamples.x0post,x0post];
-y0post = [oldSamples.y0post,y0post];
-vxpost = [oldSamples.vxpost,vxpost];
-vypost = [oldSamples.vypost,vypost];
-tspost = [oldSamples.tspost,tspost];
+if exist("oldSamples","var")
+    Npost = Npost+oldSamples.Npost;
+    dataRate64 = [oldSamples.dataRate64,dataRate64];
+    dataRate16 = [oldSamples.dataRate16,dataRate16];
+    detectable = [oldSamples.detectable,detectable];
+    x0post = [oldSamples.x0post,x0post];
+    y0post = [oldSamples.y0post,y0post];
+    vxpost = [oldSamples.vxpost,vxpost];
+    vypost = [oldSamples.vypost,vypost];
+    tspost = [oldSamples.tspost,tspost];
+end
 % tspost = min(abs((nx.*(vxpost>0)-x0post)./vxpost),abs((ny.*(vypost>0)-y0post)./vypost));
 
 % save model\'Payload Models'\'Event Data Simulation Model'\eventSamples.mat Npost x0post y0post vxpost vypost dataRate detectable tspost
@@ -98,9 +106,14 @@ save model\'Payload Models'\'Event Data Simulation Model'\eventSamplesNoise.mat 
 
 %%
 close all;
-% load model\'Payload Models'\'Event Data Simulation Model'\eventSamples.mat
-% load model\'Payload Models'\'Event Data Simulation Model'\eventSamplesNoise.mat
+load model\'Payload Models'\'Event Data Simulation Model'\eventSamplesNoise.mat
+% data2560 = load("model\Payload Models\Event Data Simulation Model\eventSamplesNoise2560x2560.mat");
+% data1000 = load("model\Payload Models\Event Data Simulation Model\eventSamplesNoise1000x1000.mat");
+% data500 = load("model\Payload Models\Event Data Simulation Model\eventSamplesNoise500x500.mat");
+% data100 = load("model\Payload Models\Event Data Simulation Model\eventSamplesNoise100x100.mat");
+% data50 = load("model\Payload Models\Event Data Simulation Model\eventSamplesNoise50x50.mat");
 
+%{
 figure;
 quiver(x0post,y0post,vxpost,vypost);
 grid on;
@@ -117,23 +130,24 @@ xlabel('Data Rate (Mbps)');
 
 detectLog = logical(detectable);
 figure; hold on;
-scatter(vecnorm([vxpost(detectLog);vypost(detectLog)]),dataRate64(detectLog)/1e6,'b');
-scatter(vecnorm([vxpost(~detectLog);vypost(~detectLog)]),dataRate64(~detectLog)/1e6,'r');
+scatter(vecnorm([vxpost(detectLog);vypost(detectLog)]),dataRate16(detectLog)/1e6,'b');
+scatter(vecnorm([vxpost(~detectLog);vypost(~detectLog)]),dataRate16(~detectLog)/1e6,'r');
 grid on;
 legend("Detectable","Not Detectable");
 xlabel('Magnitude of Velocity (px/s)');
 ylabel('Data Rate (Mbps)');
+%}
 
 figure; hold on;
 if all(~detectLog)
-    scatter(tspost,dataRate64/1e6);
+    scatter(tspost,dataRate16/1e6);
 else
-    scatter(tspost(detectLog),dataRate64(detectLog)/1e6,'b');
-    scatter(tspost(~detectLog),dataRate64(~detectLog)/1e6,'r');
+    scatter(tspost(detectLog),dataRate16(detectLog)/1e6,'b');
+    scatter(tspost(~detectLog),dataRate16(~detectLog)/1e6,'r');
     legend("Detectable","Not Detectable");
 end
 grid on;
-xlabel('Time in FOV (s)');
+xlabel('Simulation Time (s)');
 ylabel('Data Rate (Mbps)');
 
 %% calculate time for autodetection script

@@ -1,4 +1,4 @@
-function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi_0, T_sim, warmupTime, initialState, saveOutput)
+function [events, finalState] = eventDataStreamFun(nx, ny, x0_init, y0_init, vx, vy, Phi_0, T_start, T_sim, warmupTime, initialState, saveOutput)
     tic;
     %% 0. RANDOM SEED
     % Fixing the seed makes every run identical. Use 'shuffle' for a new random
@@ -11,7 +11,7 @@ function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi
     
     % nx = 1280;  ny = 720;      % sensor size in pixels. MUST match nx/ny in your
                                % angular-rate pipeline.
-    nx = 50;  ny = 50;      % sensor size in pixels. MUST match nx/ny in your
+    % nx = 50;  ny = 50;      % sensor size in pixels. MUST match nx/ny in your
                                % angular-rate pipeline.
                                
     if nargin<6
@@ -19,9 +19,9 @@ function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi
     end
     % warm up is extra history, where tsim still remains the recorded
     % duration.
-    if nargin < 7, warmupTime = 2000; end
-    if nargin < 8, initialState = []; end
-    if nargin < 9, saveOutput = true; end
+    if ~exist("warmupTime","var"), warmupTime = 2000; end
+    if ~exist("initialState","var"), initialState = []; end
+    if ~exist("saveOutput","var"), saveOutput = true; end
 
     tStart = -warmupTime;
     disp(['Warm-up: ', num2str(warmupTime),' s'])
@@ -154,12 +154,13 @@ function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi
     events    = zeros(1e6, 4);     % columns: x, y, polarity(-1/+1), time(s)
     evCount   = 0;                 % how many rows of 'events' are filled
     nCols     = numel(xList);
-    nextPrint = 0.1;               % next progress-print threshold (10%, 20%, ...)
+    nextPrint = 0.2;               % next progress-print threshold (10%, 20%, ...)
     
     finalState.V = zeros(ny, nx);     % allocate the state output before the loops
     finalState.V_ref = zeros(ny, nx); % uses y,x indexing
-     
+    totalToc = 0;
     for ci = 1:nCols
+        % pixelClock = tic;
         ix = xList(ci);
         [tx1, tx2] = axis_times(x0, vx, ix-m, ix+m);
 
@@ -223,6 +224,13 @@ function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi
                 evCount = need;
             end
         end
+        % stopToc = toc(pixelClock);
+        % totalToc = totalToc+stopToc;
+        % if ci/nCols >= nextPrint
+        %     % fprintf('  %3.0f%%  (%d events so far)\n', 100*ci/nCols, evCount);
+        %     fprintf("finished step %i/%i (%.0f%%, %.1fs left)\n",ci,nCols,100*ci/nCols,totalToc/(ci/nCols) - totalToc)
+        %     nextPrint = nextPrint + 0.2;
+        % end
     end
     events  = events(1:evCount,:);   % drop the unused pre-allocated rows
     nTarget = evCount;               % events produced by the circuit simulation
@@ -259,7 +267,7 @@ function [events, finalState] = eventDataStreamFun(x0_init, y0_init, vx, vy, Phi
     if Phi_0 > 0
         writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/census/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
     else
-        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/censusNoise/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tsim%.2f.txt",x0,y0_init,vx,vy,T_sim), 'Delimiter', 'space');
+        writematrix(events_out, sprintf("model/Payload Models/Event Data Simulation Model/censusNoise/synthetic_debris_events_x%i_y%i_vx%.2f_vy%.2f_tstart%.2f_tend%.2f.txt",x0,y0_init,vx,vy,T_start,T_start+T_sim), 'Delimiter', 'space');
     end
     % fprintf('Wrote synthetic_debris_events.txt  (columns: x y pol t_us)\n');
 end
