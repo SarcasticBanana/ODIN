@@ -77,7 +77,7 @@ debrisDens2d = reshape(dens,[nDecs, nAlts]); % rows are declinations, cols are a
 % end
 
 %% calculate inclination distribution
-nIncs = 500;
+nIncs = 1000;
 decUniqUpper = decUniq(decUniq>0);
 incs = linspace(0,pi,nIncs)';
 [decsmesh,altsmesh,incsmesh] = meshgrid(decUniqUpper,altUniq,incs);
@@ -563,7 +563,7 @@ legend(ax,'Location','best');
 
 fprintf('\nPeak sampled occupancy: %.6g qualified objects at u = %.2f deg\n', ...
     peakQualified, uDeg(peakIdx));
-disp(orbitOpportunity(peakIdx,:));
+%disp(orbitOpportunity(peakIdx,:));
 
 %% Diagnose the high-latitude dips
 % Fraction of modeled in-view debris that passes Hunter's sensor threshold.
@@ -608,7 +608,7 @@ polarComparison = table(targetDeg, uDeg(idx), meanRange_km(idx), ...
     meanVperp_km_s(idx), qualifiedPct(idx), ...
     'VariableNames', {'TargetU_deg','SampledU_deg','MeanRange_km', ...
     'MeanVperp_km_s','Qualified_pct'});
-disp(polarComparison);
+%disp(polarComparison);
 
 figure('Color','w','Name','Range, transverse speed, and qualification');
 layout = tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
@@ -631,3 +631,103 @@ for j = 1:3
 end
 xlabel(ax,'Spacecraft argument of latitude (deg)');
 title(layout,'Debris in the FOV before sensor qualification','Color','k');
+
+
+%% Downlink windows and missed qualified observing exposure
+
+% Optional: supply a qualified passage rate [detections/s], aligned with out.t.
+% Leave empty when only NinView and NqualInView are available.
+qualifiedRate_per_s = [];
+
+% Default station set from stations.m. Overlapping contacts are already merged.
+[dl, stationContacts] = downlinkTimes(out, cfg);
+dl = dl(dl(:,2) > dl(:,1), :);       % Keep positive-duration intervals
+tSec = out.t(:);                     % Same seconds and time origin as dl
+nQual = NqualInView(:);
+assert(numel(tSec) == numel(nQual) && numel(tSec) >= 2 && all(diff(tSec) > 0), ...
+    'Expected one qualified occupancy value per increasing orbit timestamp.');
+
+% Unwrap in TIME order so interpolation across 359 -> 0 deg follows the orbit.
+% The axis tick labels below are converted back to conventional 0–360 deg.
+uContinuous = rad2deg(unwrap(deg2rad(uDeg(:))));
+
+hasRate = ~isempty(qualifiedRate_per_s);
+if hasRate
+    qualifiedRate_per_s = qualifiedRate_per_s(:);
+    assert(numel(qualifiedRate_per_s) == numel(tSec) && ...
+        all(isfinite(qualifiedRate_per_s) & qualifiedRate_per_s >= 0), ...
+        'Supply one finite, nonnegative passage rate per orbit timestamp.');
+end
+
+% Integrate to the actual contact boundaries, including short contacts
+% that begin and end between two propagation samples.
+nWindows = size(dl,1);
+duration_s = dl(:,2) - dl(:,1);
+lostExposure = zeros(nWindows,1);     % qualified object-seconds
+lostDetections = zeros(nWindows,1);   % used only when a passage rate is supplied
+
+for k = 1:nWindows
+    aos = dl(k,1);
+    los = dl(k,2);
+    inside = tSec > aos & tSec < los;
+    tw = [aos; tSec(inside); los];
+
+    lostExposure(k) = trapz(tw, interp1(tSec, nQual, tw, 'linear'));
+    if hasRate
+        lostDetections(k) = trapz(tw, ...
+            interp1(tSec, qualifiedRate_per_s, tw, 'linear'));
+    end
+end
+
+% Report where each contact occurs and what it costs.
+uStart = interp1(tSec, uContinuous, dl(:,1), 'linear');
+uEnd   = interp1(tSec, uContinuous, dl(:,2), 'linear');
+downlinkReport = table(dl(:,1), dl(:,2), duration_s, ...
+    mod(uStart,360), mod(uEnd,360), lostExposure, ...
+    'VariableNames', {'Start_s','End_s','Duration_s','StartU_deg', ...
+    'EndU_deg','MissedQualifiedObjectSeconds'});
+if hasRate
+    downlinkReport.ExpectedMissedDetections = lostDetections;
+end
+disp(downlinkReport);
+
+orbitExposure = trapz(tSec, nQual);
+fprintf('\nDownlink time: %.2f min (%.2f%% of modeled time)\n', ...
+    sum(duration_s)/60, 100*sum(duration_s)/(tSec(end)-tSec(1)));
+fprintf('Qualified exposure missed: %.5g of %.5g object-s\n', ...
+    sum(lostExposure), orbitExposure);
+if orbitExposure > 0
+    fprintf('Qualified exposure lost: %.2f%%\n', ...
+        100*sum(lostExposure)/orbitExposure);
+end
+if hasRate
+    fprintf('Expected missed detections: %.4g\n', sum(lostDetections));
+end
+
+% Plot the potential observing opportunity, including what is lost during contact.
+figure('Color','w','Name','Qualified debris and downlink windows');
+ax = axes;
+hold(ax,'on');
+yTop = 1.08*max(nQual);
+if yTop <= 0, yTop = 1; end
+
+for k = 1:nWindows
+    band = patch(ax, [uStart(k) uEnd(k) uEnd(k) uStart(k)], ...
+        [0 0 yTop yTop], [0.95 0.66 0.28], ...
+        'FaceAlpha',0.30,'EdgeColor','none', ...
+        'DisplayName','Downlink / payload off');
+    if k > 1, band.HandleVisibility = 'off'; end
+end
+
+plot(ax,uContinuous,nQual,'LineWidth',1.7,'Color',[0.10 0.35 0.65], ...
+    'DisplayName','Qualified objects in FOV');
+xlim(ax,[uContinuous(1) uContinuous(end)]);
+ylim(ax,[0 yTop]);
+ticks = (45*ceil(uContinuous(1)/45)):45:(45*floor(uContinuous(end)/45));
+xticks(ax,ticks);
+xticklabels(ax,string(mod(ticks,360)));
+xlabel(ax,'Spacecraft argument of latitude (deg)');
+ylabel(ax,'Expected qualified objects in FOV');
+title(ax,'Qualified debris opportunities during downlink','Color','k');
+ax.Color = 'w'; ax.XColor = 'k'; ax.YColor = 'k';
+grid(ax,'on'); legend(ax,'Location','best');
