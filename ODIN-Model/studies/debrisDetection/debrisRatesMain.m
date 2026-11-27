@@ -293,6 +293,12 @@ rIdx4 = repmat(reshape(1:nR, [1, 1, nR, 1]), [nXi, nEta, 1, nIncs]);
 stopToc = 0;
 totalToc = 0;
 
+% Pre-allocate for diagnostic check
+% Population-weighted means for all modeled 1–5 cm debris in view.
+% NaN means the sample has no modeled population from which to form a mean.
+meanRange_km   = nan(N,1);
+meanVperp_km_s = nan(N,1);
+
 for it = 1:N
     fprintf("looking at step %02i/%i (%i%%, %.1fs left)\n",it,N,round(100*it/N),totalToc/(it/N) - totalToc)
     tic;
@@ -314,6 +320,10 @@ for it = 1:N
     hobsECI  = robsNorm - cfg.Re;
     sinDec   = max(-1, min(1, reshape(robsECI(3,:,:,:), [nXi, nEta, nR]) ./ robsNorm));
     decobs   = asin(sinDec);
+
+    %Diagnostic check for debris-cell declinations actually reached
+    inAltitude = hobsECI >= 605 & hobsECI <= 995;
+    polarEdgeVolume_km3(it) = sum(dV(inAltitude & abs(decobs) > max(decUniq)));
 
     % Volumetric cell weight w: [nXi x nEta x nR] (zero outside shell)
     dens = densInterp(hobsECI, decobs);
@@ -394,6 +404,10 @@ for it = 1:N
         NinView(it)     = sum(wAll);
         NqualInView(it) = sum(wQual);
 
+        % rAll contains range indices. Convert to physical slant range before averaging.
+        meanRange_km(it)   = dot(wAll, Rs(rAll))      / NinView(it);
+        meanVperp_km_s(it) = dot(wAll, speedForSensor) / NinView(it);
+
         vIdx = discretize(vAll, vBins);
         ok   = ~isnan(vIdx);
 
@@ -473,3 +487,147 @@ grid(ax,'on'); ax.Color='w'; ax.XColor='k'; ax.YColor='k';
 %     drawnow;
 %     pause(framePause_s);
 % end
+
+
+%% Qualified objects in the FOV versus spacecraft argument of latitude
+% Optional: replace [] with a logical vector aligned with out.t.
+% Example: contactMask = groundStationInView(:);
+contactMask = [];
+
+% Recover the total from the speed-range bins at each orbit sample.
+% NqualOutsideBins includes qualified objects outside the plotted speed range.
+time = out.t(:);
+nSamples = numel(time);
+qualifiedFromBins = reshape(sum(NqualHistory, [1 2]), [], 1) ...
+    + NqualOutsideBins(:);
+qualifiedInFOV = NqualInView(:);
+
+% The two independently accumulated totals should agree to roundoff.
+maxDifference = max(abs(qualifiedFromBins - qualifiedInFOV));
+fprintf('Maximum difference between direct and binned totals: %.3g objects\n', ...
+    maxDifference);
+
+% Argument of latitude u is measured in the direction of motion from the
+% ascending node. It remains well defined for this inclined circular orbit.
+% Each column of out.r and out.hvec corresponds to one time sample.
+rHat = out.r ./ vecnorm(out.r, 2, 1);
+hHat = out.hvec ./ vecnorm(out.hvec, 2, 1);
+
+% Ascending-node direction = ECI north pole crossed with orbit normal.
+nodeECI = [-hHat(2,:); hHat(1,:); zeros(1,nSamples)];
+nodeHat = nodeECI ./ vecnorm(nodeECI, 2, 1);
+quarterOrbitHat = cross(hHat, nodeHat, 1);
+
+uDeg = mod(atan2d(sum(rHat .* quarterOrbitHat, 1), ...
+    sum(rHat .* nodeHat, 1)), 360).';
+
+% Keep the table in time order for comparison with communications windows.
+orbitOpportunity = table((1:nSamples).', time, uDeg, qualifiedInFOV, ...
+    'VariableNames', {'Sample','Time','ArgumentOfLatitude_deg','QualifiedInFOV'});
+
+if ~isempty(contactMask)
+    assert(islogical(contactMask) && numel(contactMask) == nSamples, ...
+        'contactMask must contain one logical value per orbit sample.');
+    orbitOpportunity.InContact = contactMask(:);
+end
+
+% Sort only the plotted coordinates so the line does not jump from 360 to 0.
+% The current driver propagates one orbit (nOrbit = 1).
+[uPlot, order] = sort(uDeg);
+[peakQualified, peakIdx] = max(qualifiedInFOV);
+
+figure('Name','Qualified objects versus orbit position','Color','w');
+ax = axes;
+plot(ax, uPlot, qualifiedInFOV(order), '-', 'LineWidth', 1.6, ...
+    'Color', [0.10 0.36 0.65], 'DisplayName', 'Qualified objects in FOV');
+hold(ax,'on');
+
+if ~isempty(contactMask) && any(contactMask)
+    plot(ax, uDeg(contactMask), qualifiedInFOV(contactMask), 'o', ...
+        'Color', [0.85 0.35 0.08], 'MarkerSize', 5, ...
+        'DisplayName', 'During communications contact');
+end
+
+plot(ax, uDeg(peakIdx), peakQualified, 'kp', ...
+    'MarkerFaceColor', 'y', 'MarkerSize', 11, 'DisplayName', 'Sampled peak');
+xlim(ax,[0 360]);
+xticks(ax,0:45:360);
+grid(ax,'on');
+ax.Color = 'w';
+ax.XColor = 'k';
+ax.YColor = 'k';
+xlabel(ax,'Spacecraft argument of latitude, u (deg)');
+ylabel(ax,'Expected qualified objects in FOV');
+title(ax,'Qualified debris in view versus orbit position','Color','k');
+legend(ax,'Location','best');
+
+fprintf('\nPeak sampled occupancy: %.6g qualified objects at u = %.2f deg\n', ...
+    peakQualified, uDeg(peakIdx));
+disp(orbitOpportunity(peakIdx,:));
+
+%% Diagnose the high-latitude dips
+% Fraction of modeled in-view debris that passes Hunter's sensor threshold.
+qualFraction = NqualInView(:) ./ NinView(:);
+qualFraction(NinView(:) == 0) = NaN;
+
+figure('Color','w','Name','Polar occupancy diagnostic');
+tiledlayout(2,1,'TileSpacing','compact');
+
+ax1 = nexttile;
+plot(uDeg(order), NinView(order), '--', ...
+    uDeg(order), NqualInView(order), '-', 'LineWidth',1.5);
+ylabel('Expected objects in FOV');
+legend('All modeled 1–5 cm debris','Sensor-qualified debris','Location','best');
+title('Does the dip appear before sensor qualification?');
+
+ax2 = nexttile;
+plot(uDeg(order), 100*qualFraction(order), 'LineWidth',1.5);
+ylabel('Qualified fraction (%)');
+xlabel('Spacecraft argument of latitude (deg)');
+
+for ax = [ax1 ax2]
+    xline(ax,90,':','HandleVisibility','off');
+    xline(ax,270,':','HandleVisibility','off');
+    xlim(ax,[0 360]); xticks(ax,0:45:360); grid(ax,'on');
+    ax.Color = 'w'; ax.XColor = 'k'; ax.YColor = 'k';
+end
+
+%% Compare population-weighted range and apparent speed by orbit position
+% Requires uDeg from the argument-of-latitude section.
+[uPlot, order] = sort(uDeg(:));
+qualifiedPct = 100 * NqualInView(:) ./ NinView(:);
+qualifiedPct(NinView(:) == 0) = NaN;
+
+% Report actual sampled angles because the orbit grid may miss the targets.
+targetDeg = [90; 100; 260; 270];
+angleError = abs(mod(uDeg(:) - targetDeg.' + 180, 360) - 180);
+[~, idx] = min(angleError, [], 1);
+idx = idx(:);
+
+polarComparison = table(targetDeg, uDeg(idx), meanRange_km(idx), ...
+    meanVperp_km_s(idx), qualifiedPct(idx), ...
+    'VariableNames', {'TargetU_deg','SampledU_deg','MeanRange_km', ...
+    'MeanVperp_km_s','Qualified_pct'});
+disp(polarComparison);
+
+figure('Color','w','Name','Range, transverse speed, and qualification');
+layout = tiledlayout(3,1,'TileSpacing','compact','Padding','compact');
+series = [meanRange_km, meanVperp_km_s, qualifiedPct];
+labels = {'Mean slant range (km)', 'Mean transverse speed (km/s)', ...
+    'Qualified fraction (%)'};
+
+for j = 1:3
+    ax = nexttile(layout);
+    plot(ax, uPlot, series(order,j), 'LineWidth',1.5);
+    hold(ax,'on');
+    plot(ax, uDeg(idx), series(idx,j), 'ko', 'MarkerFaceColor','w');
+    xline(ax,90,':');
+    xline(ax,270,':');
+    xlim(ax,[0 360]);
+    xticks(ax,0:45:360);
+    ylabel(ax,labels{j});
+    grid(ax,'on');
+    ax.Color = 'w'; ax.XColor = 'k'; ax.YColor = 'k';
+end
+xlabel(ax,'Spacecraft argument of latitude (deg)');
+title(layout,'Debris in the FOV before sensor qualification','Color','k');
