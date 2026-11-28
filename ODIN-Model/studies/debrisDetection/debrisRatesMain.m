@@ -299,6 +299,23 @@ totalToc = 0;
 meanRange_km   = nan(N,1);
 meanVperp_km_s = nan(N,1);
 
+% Precompute FOV side areas for passage entry rates
+entryRate_per_s     = zeros(N,1);   % all modeled 1–5 cm entries per second
+qualifiedRate_per_s = zeros(N,1);   % entries meeting Hunter's speed threshold
+
+% Integrate over the actual, nonuniform slant-range samples [km].
+rangeWeight = gradient(Rs(:));
+rangeWeight([1 end]) = rangeWeight([1 end])/2;
+
+% Each side of the square pyramid is a planar sector. Its area element
+% in slant-range coordinates is R*dR*dAngle.
+aFOV = tan(alpha);
+angleXFace = atan(aFOV*linspace(-1,1,nEta+1)/sqrt(1+aFOV^2));
+angleYFace = atan(aFOV*linspace(-1,1,nXi+1)/sqrt(1+aFOV^2));
+
+areaXFace = diff(angleXFace(:)) * (Rs(:).*rangeWeight).';  % [nEta x nR], km²
+areaYFace = diff(angleYFace(:)) * (Rs(:).*rangeWeight).';  % [nXi  x nR], km²
+
 for it = 1:N
     fprintf("looking at step %02i/%i (%i%%, %.1fs left)\n",it,N,round(100*it/N),totalToc/(it/N) - totalToc)
     tic;
@@ -383,6 +400,66 @@ for it = 1:N
     vAppDesc   = vrelECI_desc - vFrame;
     vParDesc   = sum(uECI .* vAppDesc, 1);
     vPerp_desc = reshape(sqrt(max(0, sum(vAppDesc.^2, 1) - vParDesc.^2)), [nXi, nEta, nR, nIncs]);
+
+    %% Inward debris flux across the four exterior sides of the camera FOV
+    cameraECI = QECI * QRTN;  % camera axes expressed in ECI
+
+    for side = 1:4
+        % Select the nearest interior cells to this face and its outward normal.
+        switch side
+            case 1   % negative camera X
+                ix = 1;   iy = 1:nEta;
+                normalCam = [-1; 0; -aFOV];  faceArea = areaXFace;
+            case 2   % positive camera X
+                ix = nXi; iy = 1:nEta;
+                normalCam = [ 1; 0; -aFOV];  faceArea = areaXFace;
+            case 3   % negative camera Y
+                ix = 1:nXi; iy = 1;
+                normalCam = [0; -1; -aFOV];  faceArea = areaYFace;
+            case 4   % positive camera Y
+                ix = 1:nXi; iy = nEta;
+                normalCam = [0;  1; -aFOV];  faceArea = areaYFace;
+        end
+
+        normalECI = cameraECI * (normalCam / norm(normalCam));
+        nEdge = numel(ix)*numel(iy);
+        faceDims = [nEdge, nR, nIncs];
+
+        faceAltitude = reshape(hobsECI(ix,iy,:), nEdge, nR);
+        faceDensity  = reshape(dens(ix,iy,:),    nEdge, nR);
+        incProb      = reshape(p_i(ix,iy,:,:),   faceDims);
+
+        % Equal ascending/descending population weights, as in w_branch.
+        % Units before multiplying by inward speed are objects/km.
+        branchWeight = 0.5 * faceDensity .* faceArea .* incProb;
+
+        for branch = 1:2
+            if branch == 1
+                velocity = vAppAsc(:,ix,iy,:,:);
+                skySpeed = reshape(vPerp_asc(ix,iy,:,:), faceDims);
+            else
+                velocity = vAppDesc(:,ix,iy,:,:);
+                skySpeed = reshape(vPerp_desc(ix,iy,:,:), faceDims);
+            end
+
+            % A negative dot product means motion into the FOV.
+            inwardSpeed = max(0, -reshape(sum(normalECI .* velocity,1), faceDims));
+            flux = branchWeight .* inwardSpeed;   % expected entries/s
+            incoming = find(flux > 0);
+            if isempty(incoming)
+                continue
+            end
+
+            % Recover the altitude and slant-range index for each incoming sample.
+            [iEdge,iRange,~] = ind2sub(faceDims,incoming);
+            hEntry = faceAltitude(sub2ind([nEdge,nR],iEdge,iRange));
+
+            pQual = qualify(hEntry, iRange, skySpeed(incoming));
+            entryRate_per_s(it) = entryRate_per_s(it) + sum(flux(incoming));
+            qualifiedRate_per_s(it) = qualifiedRate_per_s(it) ...
+                + dot(flux(incoming),pQual);
+        end
+    end
 
     % Keep only nonzero-weight entries (already filtered to the 605-995 km shell)
     nz = w_branch > 0;
@@ -635,10 +712,6 @@ title(layout,'Debris in the FOV before sensor qualification','Color','k');
 
 %% Downlink windows and missed qualified observing exposure
 
-% Optional: supply a qualified passage rate [detections/s], aligned with out.t.
-% Leave empty when only NinView and NqualInView are available.
-qualifiedRate_per_s = [];
-
 % Default station set from stations.m. Overlapping contacts are already merged.
 [dl, stationContacts] = downlinkTimes(out, cfg);
 dl = dl(dl(:,2) > dl(:,1), :);       % Keep positive-duration intervals
@@ -729,5 +802,68 @@ xticklabels(ax,string(mod(ticks,360)));
 xlabel(ax,'Spacecraft argument of latitude (deg)');
 ylabel(ax,'Expected qualified objects in FOV');
 title(ax,'Qualified debris opportunities during downlink','Color','k');
+ax.Color = 'w'; ax.XColor = 'k'; ax.YColor = 'k';
+grid(ax,'on'); legend(ax,'Location','best');
+
+%% Qualified passage entries missed during downlink
+tSec = out.t(:);
+rate = qualifiedRate_per_s(:);              % expected qualified entries/s
+dl = downlinkTimes(out,cfg);                % merged [start_s, end_s] windows
+dl = dl(dl(:,2) > dl(:,1),:);
+
+assert(numel(tSec) == numel(rate) && all(diff(tSec) > 0), ...
+    'Expected one passage rate per increasing orbit timestamp.');
+assert(all(isfinite(rate) & rate >= 0), 'Invalid qualified passage rate.');
+
+% Integrate to the actual window boundaries. This also handles a contact
+% that starts and ends between two propagation samples.
+missedEntries = zeros(size(dl,1),1);
+for k = 1:size(dl,1)
+    inside = tSec > dl(k,1) & tSec < dl(k,2);
+    tw = [dl(k,1); tSec(inside); dl(k,2)];
+    missedEntries(k) = trapz(tw, interp1(tSec,rate,tw,'linear'));
+end
+
+expectedEntries   = trapz(tSec,rate);
+expectedMissed    = sum(missedEntries);
+expectedAvailable = expectedEntries - expectedMissed;
+
+downlinkReport = table(dl(:,1), dl(:,2), diff(dl,1,2), missedEntries, ...
+    'VariableNames', {'Start_s','End_s','Duration_s','ExpectedMissedEntries'});
+disp(downlinkReport);
+fprintf('\nExpected qualified entries over modeled orbit: %.4f\n', expectedEntries);
+fprintf('Expected entries during downlink:              %.4f\n', expectedMissed);
+fprintf('Expected entries outside downlink:             %.4f\n', expectedAvailable);
+if expectedEntries > 0
+    fprintf('Fraction of qualified entries during downlink: %.2f%%\n', ...
+        100*expectedMissed/expectedEntries);
+end
+
+% Use continuous angle for contact interpolation across the ascending node.
+uPlot = rad2deg(unwrap(deg2rad(uDeg(:))));
+ratePerMin = 60*rate;
+yTop = max(eps,1.08*max(ratePerMin));
+
+figure('Color','w','Name','Qualified passage entries and downlink');
+ax = axes;
+hold(ax,'on');
+for k = 1:size(dl,1)
+    span = interp1(tSec,uPlot,dl(k,:),'linear');
+    band = patch(ax,span([1 2 2 1]),[0 0 yTop yTop],[1 0.75 0.4], ...
+        'FaceAlpha',0.3,'EdgeColor','none','DisplayName','Downlink');
+    if k > 1
+        band.HandleVisibility = 'off';
+    end
+end
+plot(ax,uPlot,ratePerMin,'LineWidth',1.7,'Color',[0.10 0.35 0.65], ...
+    'DisplayName','Qualified passage entries');
+xlim(ax,[uPlot(1) uPlot(end)]);
+ylim(ax,[0 yTop]);
+ticks = (45*ceil(uPlot(1)/45)):45:(45*floor(uPlot(end)/45));
+xticks(ax,ticks);
+xticklabels(ax,string(mod(ticks,360)));
+xlabel(ax,'Spacecraft argument of latitude (deg)');
+ylabel(ax,'Expected qualified passage entries/min');
+title(ax,'Qualified passage entry rate and downlink windows','Color','k');
 ax.Color = 'w'; ax.XColor = 'k'; ax.YColor = 'k';
 grid(ax,'on'); legend(ax,'Location','best');
